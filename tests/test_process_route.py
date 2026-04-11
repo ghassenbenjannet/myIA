@@ -84,6 +84,39 @@ def test_process_analysis_response_contains_enriched_analysis_fields() -> None:
     assert "recommended_output" in result
 
 
+def test_process_analysis_can_use_readonly_context() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "La remise ne se calcule plus sur certaines commandes web.",
+            "context_hint": "Sujet metier a analyser",
+            "target_output": "analysis",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_workflow"] == "analysis"
+    assert payload["context_used"] is not None
+    assert payload["context_used"]["source_name"] == "stub_confluence"
+    assert payload["context_used"]["snippets"]
+
+
+def test_process_analysis_without_matching_context_keeps_context_used_null() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "Besoin flou a analyser sur un sujet organisationnel interne.",
+            "target_output": "analysis",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_workflow"] == "analysis"
+    assert payload["context_used"] is None
+
+
 def test_process_ticket_response_contains_enriched_ticket_fields() -> None:
     response = client.post(
         "/process",
@@ -165,5 +198,6 @@ def test_process_analysis_route_keeps_api_contract() -> None:
     assert "confidence" in payload
     assert "result" in payload
     assert "intermediate_analysis" in payload
+    assert "context_used" in payload
     assert "quality_checks" in payload
     assert "warnings" in payload
