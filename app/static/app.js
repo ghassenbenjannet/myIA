@@ -1,5 +1,6 @@
 const RECENT_RUNS_KEY = "shadow-po-recent-runs";
 const MAX_RECENT_RUNS = 8;
+let currentTopicId = null;
 
 function stringify(value) {
   return JSON.stringify(value, null, 2);
@@ -129,6 +130,17 @@ function renderRunActions(runId, options = {}) {
         : ""}
     </div>
   `;
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("fr-FR");
 }
 
 function renderDocumentation(result) {
@@ -273,20 +285,30 @@ function renderRawBlock(payload) {
   `;
 }
 
-function renderProcessLike(payload) {
+function renderProcessMetaCard(title, payload) {
   return `
     <div class="artifact-card">
       <h3 class="run-focus">
-        <span>Execution metadata</span>
+        <span>${escapeHtml(title)}</span>
         <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
       </h3>
       ${renderKvGrid([
         ["Run ID", payload.run_id, true],
+        ["Topic ID", payload.topic_id, true],
         ["Request type", payload.request_type],
         ["Selected workflow", payload.selected_workflow],
         ["Confidence", payload.confidence],
       ])}
       ${renderRunActions(payload.run_id)}
+    </div>
+  `;
+}
+
+function renderProcessLike(payload) {
+  return `
+    ${renderProcessMetaCard("Execution metadata", payload)}
+    <div class="artifact-card">
+      <h3>Decision quality</h3>
       ${renderList("Quality checks", payload.quality_checks || [])}
       ${renderList("Warnings", payload.warnings || [])}
     </div>
@@ -318,6 +340,7 @@ function renderRun(payload) {
       </h3>
       ${renderKvGrid([
         ["Run ID", payload.run_id, true],
+        ["Topic ID", payload.topic_id, true],
         ["Status", payload.status],
         ["Parent run ID", payload.parent_run_id],
         ["Continuation action", payload.continuation_action],
@@ -340,6 +363,99 @@ function renderRun(payload) {
         </div>
       `
       : ""}
+    ${renderRawBlock(payload)}
+  `;
+}
+
+function renderTopicSummary(topic) {
+  return `
+    <div class="topic-summary ${currentTopicId === topic.topic_id ? "active" : ""}">
+      <div class="topic-summary-head">
+        <strong>${escapeHtml(topic.topic_label || topic.topic_id)}</strong>
+        <span class="topic-chip">${escapeHtml(topic.status)}</span>
+      </div>
+      ${renderKvGrid([
+        ["Topic ID", topic.topic_id, true],
+        ["Updated at", formatDate(topic.updated_at)],
+        ["Run count", topic.run_count],
+        ["Latest run ID", topic.latest_run_id],
+      ])}
+      <div class="action-bar">
+        <button class="secondary" type="button" data-topic-action="open" data-topic-id="${escapeHtml(topic.topic_id)}">Ouvrir le topic</button>
+        <button class="ghost" type="button" data-run-action="lookup" data-run-id="${escapeHtml(topic.latest_run_id)}">Relire le dernier run</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTopicRunCard(run) {
+  return `
+    <div class="topic-run-card">
+      <h4>${escapeHtml(run.final_workflow)} <span class="topic-chip">${escapeHtml(run.run_id)}</span></h4>
+      ${renderKvGrid([
+        ["Run ID", run.run_id, true],
+        ["Created at", formatDate(run.created_at)],
+        ["Workflow", run.final_workflow],
+        ["Request type", run.request_type],
+        ["Parent run ID", run.parent_run_id],
+        ["Continuation action", run.continuation_action],
+      ])}
+      ${renderText("Raw input", run.raw_input)}
+      ${run.available_actions?.length ? renderList("Available actions", run.available_actions) : ""}
+      ${renderRunActions(run.run_id, { parentRunId: run.parent_run_id })}
+    </div>
+  `;
+}
+
+function renderTopicDetail(payload) {
+  return `
+    <div class="artifact-card">
+      <h3>${escapeHtml(payload.topic.topic_label || "Topic")}</h3>
+      ${renderKvGrid([
+        ["Topic ID", payload.topic.topic_id, true],
+        ["Status", payload.topic.status],
+        ["Created at", formatDate(payload.topic.created_at)],
+        ["Updated at", formatDate(payload.topic.updated_at)],
+        ["Root run ID", payload.topic.root_run_id],
+        ["Latest run ID", payload.topic.latest_run_id],
+        ["Run count", payload.topic.run_ids?.length || payload.runs.length],
+      ])}
+    </div>
+    ${payload.root_run
+      ? `
+        <div class="artifact-card">
+          <h3>Root run</h3>
+          ${renderKvGrid([
+            ["Run ID", payload.root_run.run_id, true],
+            ["Workflow", payload.root_run.final_workflow],
+            ["Created at", formatDate(payload.root_run.created_at)],
+          ])}
+          ${renderRunActions(payload.root_run.run_id, { parentRunId: payload.root_run.parent_run_id })}
+        </div>
+      `
+      : ""}
+    ${payload.latest_run
+      ? `
+        <div class="artifact-card">
+          <h3>Latest run</h3>
+          ${renderKvGrid([
+            ["Run ID", payload.latest_run.run_id, true],
+            ["Workflow", payload.latest_run.final_workflow],
+            ["Created at", formatDate(payload.latest_run.created_at)],
+          ])}
+          ${payload.latest_run.available_actions?.length
+            ? renderList("Available actions", payload.latest_run.available_actions)
+            : ""}
+          ${renderRunActions(payload.latest_run.run_id, { parentRunId: payload.latest_run.parent_run_id })}
+        </div>
+      `
+      : ""}
+    <div class="artifact-card">
+      <h3>Runs ordonnes</h3>
+      <div class="topic-run-list">
+        ${payload.runs.map(renderTopicRunCard).join("")}
+      </div>
+    </div>
     ${renderRawBlock(payload)}
   `;
 }
@@ -385,6 +501,7 @@ function rememberRun(entry) {
   saveRecentRuns(current.slice(0, MAX_RECENT_RUNS));
   applyLatestRun(entry.run_id);
   renderRecentRuns();
+  loadTopics();
 }
 
 function renderRecentRuns() {
@@ -434,6 +551,38 @@ async function apiRequest(path, options = {}) {
     throw new Error(`${response.status} - ${detail}`);
   }
   return payload;
+}
+
+async function loadTopics() {
+  const container = document.getElementById("topics-list");
+  container.classList.remove("empty");
+  container.innerHTML = `<div class="message ok inline-status">Chargement des topics...</div>`;
+  try {
+    const topics = await apiRequest("/topics");
+    if (!topics.length) {
+      container.innerHTML = "";
+      container.classList.add("empty");
+      return;
+    }
+    container.classList.remove("empty");
+    container.innerHTML = topics.map(renderTopicSummary).join("");
+  } catch (error) {
+    container.innerHTML = `<div class="message error">${escapeHtml(error.message || "Erreur reseau")}</div>`;
+  }
+}
+
+async function openTopic(topicId) {
+  const container = document.getElementById("topic-detail");
+  showInlineStatus(container, "ok", "Chargement du topic...");
+  try {
+    const payload = await apiRequest(`/topics/${encodeURIComponent(topicId)}`);
+    currentTopicId = topicId;
+    container.innerHTML = renderTopicDetail(payload);
+    renderRecentRuns();
+    await loadTopics();
+  } catch (error) {
+    showInlineStatus(container, "error", error.message || "Erreur reseau");
+  }
 }
 
 function bindJsonForm(formId, outputId, buildRequest, requestFn, renderFn, onSuccess) {
@@ -520,14 +669,13 @@ bindJsonForm(
   }),
   (payload) => apiRequest("/source-summary", { method: "POST", body: stringify(payload) }),
   (payload) => `
-    <div class="artifact-card">
-      <h3 class="run-focus">
-        <span>Source summary metadata</span>
-        <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
-      </h3>
-      ${renderKvGrid([["Run ID", payload.run_id, true]])}
-      ${renderRunActions(payload.run_id)}
-    </div>
+    ${renderProcessMetaCard("Source summary metadata", {
+      run_id: payload.run_id,
+      topic_id: payload.topic_id,
+      request_type: "source_summary",
+      selected_workflow: "source_summary",
+      confidence: "n/a",
+    })}
     ${renderArtifact(payload.result)}
     ${renderRawBlock(payload)}
   `,
@@ -548,14 +696,13 @@ bindJsonForm(
   }),
   (payload) => apiRequest("/jira-read", { method: "POST", body: stringify(payload) }),
   (payload) => `
-    <div class="artifact-card">
-      <h3 class="run-focus">
-        <span>Jira read metadata</span>
-        <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
-      </h3>
-      ${renderKvGrid([["Run ID", payload.run_id, true]])}
-      ${renderRunActions(payload.run_id)}
-    </div>
+    ${renderProcessMetaCard("Jira read metadata", {
+      run_id: payload.run_id,
+      topic_id: payload.topic_id,
+      request_type: "jira_read",
+      selected_workflow: "jira_read",
+      confidence: "n/a",
+    })}
     ${renderArtifact(payload.result)}
     ${renderRawBlock(payload)}
   `,
@@ -590,8 +737,27 @@ document.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-topic-action]");
+  if (!button) {
+    return;
+  }
+  const topicId = button.getAttribute("data-topic-id");
+  const action = button.getAttribute("data-topic-action");
+  if (!topicId || action !== "open") {
+    return;
+  }
+  scrollToSection("topics-section");
+  openTopic(topicId);
+});
+
+document.getElementById("topics-refresh")?.addEventListener("click", () => {
+  loadTopics();
+});
+
 const latestRun = getRecentRuns()[0]?.run_id;
 if (latestRun) {
   applyLatestRun(latestRun);
 }
 renderRecentRuns();
+loadTopics();
