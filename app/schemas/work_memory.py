@@ -14,6 +14,7 @@ WorkResult = AnalysisResult | TicketResult | DocumentationResult | SourceSummary
 
 class WorkMemoryRun(BaseModel):
     run_id: str
+    topic_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     status: str = "completed"
     parent_run_id: str | None = None

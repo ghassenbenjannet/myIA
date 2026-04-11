@@ -34,11 +34,13 @@ class InMemoryWorkMemoryRepository:
         result,
         intermediate_analysis=None,
         context_used=None,
+        topic_id: str | None = None,
         parent_run_id: str | None = None,
         continuation_action: str | None = None,
     ) -> WorkMemoryRun:
         run = WorkMemoryRun(
             run_id=str(uuid4()),
+            topic_id=topic_id,
             parent_run_id=parent_run_id,
             continuation_action=continuation_action,
             raw_input=raw_input,
@@ -50,6 +52,13 @@ class InMemoryWorkMemoryRepository:
             context_used=context_used,
         )
         return self.save_run(run)
+
+    def assign_topic(self, run_id: str, topic_id: str) -> WorkMemoryRun | None:
+        run = self.get_run(run_id)
+        if run is None:
+            return None
+        updated = run.model_copy(update={"topic_id": topic_id})
+        return self.save_run(updated)
 
     def get_run(self, run_id: str) -> WorkMemoryRun | None:
         return self._runs.get(run_id)

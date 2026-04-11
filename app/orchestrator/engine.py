@@ -14,6 +14,7 @@ from app.schemas.source_summary import SourceSummaryResult
 from app.schemas.work_memory import WorkMemoryRun
 from app.services.context_provider import ReadOnlyContextProvider
 from app.services.context_selection import ContextSelectionPolicy
+from app.services.topic_repository import topic_repository
 from app.services.work_memory_repository import work_memory_repository
 
 
@@ -39,6 +40,7 @@ class ProcessEngine:
         self.context_provider = ReadOnlyContextProvider()
         self.context_selection_policy = ContextSelectionPolicy()
         self.work_memory_repository = work_memory_repository
+        self.topic_repository = topic_repository
 
     def process(self, request: ProcessRequest) -> ProcessResponse:
         classification = self.classifier.classify(
@@ -116,9 +118,18 @@ class ProcessEngine:
             intermediate_analysis=intermediate_analysis,
             context_used=context_used,
         )
+        topic = self.topic_repository.create_topic(
+            run_id=run.run_id,
+            topic_label=self.topic_repository.build_default_label(
+                raw_input=request.user_input,
+                result=result,
+            ),
+        )
+        run = self.work_memory_repository.assign_topic(run.run_id, topic.topic_id) or run
 
         return ProcessResponse(
             run_id=run.run_id,
+            topic_id=topic.topic_id,
             request_type=classification["request_type"],
             selected_workflow=workflow,
             confidence=classification["confidence"],
@@ -154,12 +165,16 @@ class ProcessEngine:
             result=result,
             intermediate_analysis=intermediate_analysis,
             context_used=source_run.context_used,
+            topic_id=source_run.topic_id,
             parent_run_id=source_run.run_id,
             continuation_action=action,
         )
+        topic_id = self._ensure_topic_for_continuation(source_run, child_run)
+        child_run = self.work_memory_repository.assign_topic(child_run.run_id, topic_id) or child_run
 
         return ProcessResponse(
             run_id=child_run.run_id,
+            topic_id=topic_id,
             request_type=request_type,
             selected_workflow=workflow,
             confidence=0.95,
@@ -294,6 +309,26 @@ class ProcessEngine:
             )
 
         raise HTTPException(status_code=400, detail="Unsupported continuation action")
+
+    def _ensure_topic_for_continuation(self, source_run: WorkMemoryRun, child_run: WorkMemoryRun) -> str:
+        if source_run.topic_id:
+            existing_topic = self.topic_repository.get_topic(source_run.topic_id)
+            if existing_topic is not None:
+                self.topic_repository.attach_run(source_run.topic_id, child_run.run_id)
+                self.work_memory_repository.assign_topic(child_run.run_id, source_run.topic_id)
+                return source_run.topic_id
+
+        topic = self.topic_repository.create_topic(
+            run_id=source_run.run_id,
+            topic_label=self.topic_repository.build_default_label(
+                raw_input=source_run.raw_input,
+                result=source_run.result,
+            ),
+        )
+        self.work_memory_repository.assign_topic(source_run.run_id, topic.topic_id)
+        self.topic_repository.attach_run(topic.topic_id, child_run.run_id)
+        self.work_memory_repository.assign_topic(child_run.run_id, topic.topic_id)
+        return topic.topic_id
 
     def _get_analysis_source(self, source_run: WorkMemoryRun) -> AnalysisResult | None:
         if isinstance(source_run.result, AnalysisResult):
