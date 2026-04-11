@@ -5,9 +5,10 @@ from pydantic import BaseModel, Field
 from app.schemas.analysis import AnalysisResult
 from app.schemas.context import ContextUsed
 from app.schemas.documentation import DocumentationResult
+from app.schemas.source_summary import SourceSummaryResult
 from app.schemas.ticket import TicketResult
 
-WorkResult = AnalysisResult | TicketResult | DocumentationResult
+WorkResult = AnalysisResult | TicketResult | DocumentationResult | SourceSummaryResult
 
 
 class WorkMemoryRun(BaseModel):
