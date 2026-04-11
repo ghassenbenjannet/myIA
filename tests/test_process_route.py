@@ -295,8 +295,15 @@ def test_process_creates_topic_and_topic_endpoint_returns_linked_run() -> None:
     assert topic_payload["topic"]["root_run_id"] == payload["run_id"]
     assert topic_payload["topic"]["latest_run_id"] == payload["run_id"]
     assert payload["run_id"] in topic_payload["topic"]["run_ids"]
+    assert topic_payload["root_run"]["run_id"] == payload["run_id"]
+    assert topic_payload["latest_run"]["run_id"] == payload["run_id"]
     assert len(topic_payload["runs"]) == 1
     assert topic_payload["runs"][0]["run_id"] == payload["run_id"]
+    assert topic_payload["runs"][0]["available_actions"] == [
+        "refine_analysis",
+        "draft_ticket",
+        "draft_documentation",
+    ]
 
 
 def test_continue_run_from_analysis_to_ticket_creates_child_run() -> None:
@@ -384,6 +391,87 @@ def test_continuation_keeps_parent_topic_and_updates_topic_latest_run() -> None:
     assert topic_payload["topic"]["root_run_id"] == parent_payload["run_id"]
     assert topic_payload["topic"]["latest_run_id"] == child_payload["run_id"]
     assert topic_payload["topic"]["run_ids"] == [parent_payload["run_id"], child_payload["run_id"]]
+    assert topic_payload["root_run"]["run_id"] == parent_payload["run_id"]
+    assert topic_payload["latest_run"]["run_id"] == child_payload["run_id"]
+
+
+def test_get_topic_returns_runs_ordered_oldest_to_newest() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Sujet de facturation a structurer",
+            "target_output": "analysis",
+        },
+    )
+
+    parent_payload = process_response.json()
+    first_continue = client.post(
+        f"/runs/{parent_payload['run_id']}/continue",
+        json={"action": "draft_documentation"},
+    )
+    second_continue = client.post(
+        f"/runs/{first_continue.json()['run_id']}/continue",
+        json={"action": "refine_analysis"},
+    )
+
+    topic_response = client.get(f"/topics/{parent_payload['topic_id']}")
+
+    assert topic_response.status_code == 200
+    topic_payload = topic_response.json()
+    assert [run["run_id"] for run in topic_payload["runs"]] == [
+        parent_payload["run_id"],
+        first_continue.json()["run_id"],
+        second_continue.json()["run_id"],
+    ]
+
+
+def test_get_topic_available_actions_are_coherent_with_run_type() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Le paiement web ne fonctionne plus pour certains utilisateurs.",
+            "target_output": "analysis",
+        },
+    )
+
+    analysis_payload = process_response.json()
+    documentation_response = client.post(
+        f"/runs/{analysis_payload['run_id']}/continue",
+        json={"action": "draft_documentation"},
+    )
+
+    topic_response = client.get(f"/topics/{analysis_payload['topic_id']}")
+
+    assert topic_response.status_code == 200
+    topic_payload = topic_response.json()
+    runs_by_id = {run["run_id"]: run for run in topic_payload["runs"]}
+    assert runs_by_id[analysis_payload["run_id"]]["available_actions"] == [
+        "refine_analysis",
+        "draft_ticket",
+        "draft_documentation",
+    ]
+    assert runs_by_id[documentation_response.json()["run_id"]]["available_actions"] == [
+        "refine_analysis",
+        "draft_ticket",
+        "draft_documentation",
+    ]
+
+
+def test_get_topic_keeps_backward_compatible_fields() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "Sujet metier a analyser pour compatibilite topic.",
+            "target_output": "analysis",
+        },
+    )
+
+    topic_response = client.get(f"/topics/{response.json()['topic_id']}")
+
+    assert topic_response.status_code == 200
+    payload = topic_response.json()
+    assert "topic" in payload
+    assert "runs" in payload
 
 
 def test_get_unknown_run_returns_404() -> None:

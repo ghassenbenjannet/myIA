@@ -8,7 +8,7 @@ from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.schemas.source_request import SourceSummaryRequest
 from app.schemas.source_response import SourceSummaryResponse
-from app.schemas.topic import TopicDetailResponse
+from app.schemas.topic import TopicDetailResponse, build_topic_run_view
 from app.schemas.work_memory import WorkMemoryRun
 from app.services.jira_read_service import (
     JiraIssueNotFoundError,
@@ -43,7 +43,15 @@ def get_topic(topic_id: str) -> TopicDetailResponse:
     topic = topic_repository.get_topic(topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
-    return TopicDetailResponse(topic=topic, runs=topic_repository.get_topic_runs(topic_id))
+    runs = [build_topic_run_view(run) for run in topic_repository.get_topic_runs(topic_id)]
+    root_run = next((run for run in runs if run.run_id == topic.root_run_id), None)
+    latest_run = next((run for run in runs if run.run_id == topic.latest_run_id), None)
+    return TopicDetailResponse(
+        topic=topic,
+        runs=runs,
+        root_run=root_run,
+        latest_run=latest_run,
+    )
 
 
 @router.post("/runs/{run_id}/continue", response_model=ProcessResponse)

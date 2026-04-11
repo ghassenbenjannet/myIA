@@ -79,7 +79,7 @@ class InMemoryTopicRepository:
             run = work_memory_repository.get_run(run_id)
             if run is not None:
                 runs.append(run)
-        return runs
+        return sorted(runs, key=lambda run: run.created_at)
 
 
 topic_repository = InMemoryTopicRepository()
