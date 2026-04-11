@@ -114,10 +114,40 @@ class QualityGate:
         else:
             warnings.append("ticket_missing_description")
 
+        if result.get("business_goal"):
+            quality_checks.append("ticket_business_goal_present")
+        else:
+            warnings.append("ticket_missing_business_goal")
+
         if result.get("acceptance_criteria"):
             quality_checks.append("ticket_acceptance_criteria_present")
         else:
             warnings.append("ticket_missing_acceptance_criteria")
+
+        if result.get("open_points"):
+            quality_checks.append("ticket_open_points_present")
+        else:
+            warnings.append("ticket_missing_open_points")
+
+        if result.get("dependencies"):
+            quality_checks.append("ticket_dependencies_present")
+        else:
+            warnings.append("ticket_missing_dependencies")
+
+        if result.get("current_behavior"):
+            quality_checks.append("ticket_current_behavior_present")
+        else:
+            warnings.append("ticket_missing_current_behavior")
+
+        if result.get("expected_behavior"):
+            quality_checks.append("ticket_expected_behavior_present")
+        else:
+            warnings.append("ticket_missing_expected_behavior")
+
+        if result.get("business_impacts") or result.get("technical_impacts"):
+            quality_checks.append("ticket_impacts_present")
+        else:
+            warnings.append("ticket_missing_impacts")
 
     def _check_documentation(
         self,
