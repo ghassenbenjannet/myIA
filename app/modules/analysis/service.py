@@ -5,7 +5,7 @@ class AnalysisService:
     """
     Deterministic analysis service for the MVP.
 
-    The goal is to produce a more actionable PO-style analysis without
+    The goal is to produce a compact, PO-oriented analysis without
     introducing NLP or external dependencies.
     """
 
@@ -13,7 +13,7 @@ class AnalysisService:
         "api": "Des interfaces API peuvent etre impactees.",
         "batch": "Des traitements batch peuvent devoir etre verifies.",
         "import": "Les flux d'import peuvent etre affectes.",
-        "flux": "Les flux inter-applications doivent etre verifies.",
+        "flux": "Des flux inter-applications doivent etre verifies.",
         "interface": "Les interfaces entre systemes doivent etre controlees.",
         "legacy": "Le patrimoine legacy peut complexifier la correction.",
     }
@@ -90,16 +90,15 @@ class AnalysisService:
         return AnalysisResult(
             reformulation=self._build_reformulation(
                 user_input=user_input,
-                detected_type=classification["request_type"],
                 current_behavior=current_behavior,
                 expected_behavior=expected_behavior,
             ),
             request_summary=self._build_request_summary(
-                detected_type=classification["request_type"],
                 current_behavior=current_behavior,
                 expected_behavior=expected_behavior,
                 business_impacts=business_impacts,
                 technical_impacts=technical_impacts,
+                dependencies=dependencies,
             ),
             context_hint=context_hint,
             detected_type=classification["request_type"],
@@ -112,7 +111,6 @@ class AnalysisService:
             risks=risks,
             open_questions=open_questions,
             recommended_next_step=self._build_recommended_next_step(
-                expected_behavior=expected_behavior,
                 ambiguities=ambiguities,
                 recommended_output=recommended_output,
             ),
@@ -141,57 +139,66 @@ class AnalysisService:
     def _build_reformulation(
         self,
         user_input: str,
-        detected_type: str,
         current_behavior: str | None,
         expected_behavior: str | None,
     ) -> str:
+        topic = self._short_subject(user_input)
         if current_behavior and expected_behavior:
-            return (
-                f"Sujet analyse de type {detected_type}: un comportement actuel semble poser probleme "
-                f"et un comportement cible est a clarifier ou valider. Demande initiale: {user_input}"
-            )
+            return f"Le sujet porte sur {topic}, avec un comportement observe a investiguer et un comportement cible a cadrer."
         if current_behavior:
-            return (
-                f"Sujet analyse de type {detected_type}: la demande decrit surtout un comportement actuel "
-                f"problematique a investiguer. Demande initiale: {user_input}"
-            )
+            return f"Le sujet porte sur {topic}, avec un comportement observe a investiguer."
         if expected_behavior:
-            return (
-                f"Sujet analyse de type {detected_type}: la demande decrit surtout un comportement cible "
-                f"ou une attente a cadrer. Demande initiale: {user_input}"
-            )
-        return (
-            f"Sujet analyse de type {detected_type}: la demande doit etre structuree avant transformation "
-            f"en livrable actionnable. Demande initiale: {user_input}"
+            return f"Le sujet porte sur {topic}, avec un comportement cible ou un besoin a cadrer."
+        return f"Le sujet porte sur {topic} et doit etre clarifie avant transformation en livrable actionnable."
+
+    def _short_subject(self, user_input: str) -> str:
+        subject = user_input.strip()
+        prefixes = (
+            "le metier dit que ",
+            "peux-tu regarder ",
+            "peux tu regarder ",
+            "sujet ",
         )
+        lowered = self._normalize(subject)
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                subject = subject[len(prefix):].strip()
+                break
+
+        if len(subject) > 90:
+            subject = subject[:87].rstrip() + "..."
+
+        return subject.lower()
 
     def _build_request_summary(
         self,
-        detected_type: str,
         current_behavior: str | None,
         expected_behavior: str | None,
         business_impacts: list[str],
         technical_impacts: list[str],
+        dependencies: list[str],
     ) -> str:
-        parts = [f"Analyse orientee PO pour un sujet classe {detected_type}."]
+        parts = ["Analyse PO preliminaire."]
         if current_behavior:
-            parts.append("Un comportement actuel a ete identifie.")
+            parts.append("Le comportement actuel est partiellement decrit.")
         if expected_behavior:
-            parts.append("Un comportement attendu est present ou sous-entendu.")
+            parts.append("Le comportement attendu est partiellement decrit.")
         if business_impacts:
-            parts.append("Des impacts metier potentiels ont ete releves.")
+            parts.append("Des impacts metier ont ete identifies.")
         if technical_impacts:
-            parts.append("Des impacts techniques potentiels ont ete releves.")
+            parts.append("Des impacts techniques ont ete identifies.")
+        if dependencies:
+            parts.append("Des dependances sont a verifier.")
         return " ".join(parts)
 
     def _extract_current_behavior(self, user_input: str, lowered: str) -> str | None:
         if any(hint in lowered for hint in self.CURRENT_BEHAVIOR_HINTS):
-            return f"Le comportement actuel semble problematique ou en echec: {user_input.strip()}"
+            return f"Comportement observe: {user_input.strip()}"
         return None
 
     def _extract_expected_behavior(self, user_input: str, lowered: str) -> str | None:
         if any(hint in lowered for hint in self.EXPECTED_BEHAVIOR_HINTS):
-            return f"Le comportement attendu semble etre exprime dans la demande: {user_input.strip()}"
+            return f"Comportement cible a confirmer: {user_input.strip()}"
         return None
 
     def _extract_impacts(self, lowered: str, mapping: dict[str, str]) -> list[str]:
@@ -219,13 +226,10 @@ class AnalysisService:
 
         if "a confirmer" in lowered or "on ne sait pas" in lowered or "a clarifier" in lowered:
             ambiguities.append("Le perimetre exact ou certaines hypotheses restent a confirmer.")
-
         if current_behavior is None:
-            ambiguities.append("Le comportement actuel n'est pas decrit de maniere suffisamment explicite.")
-
+            ambiguities.append("Le comportement actuel n'est pas suffisamment explicite.")
         if expected_behavior is None:
             ambiguities.append("Le comportement attendu n'est pas formule clairement.")
-
         if not business_impacts:
             ambiguities.append("Les impacts metier concrets restent a preciser.")
 
@@ -238,17 +242,14 @@ class AnalysisService:
         technical_impacts: list[str],
         dependencies: list[str],
     ) -> list[str]:
-        risks = ["Risque de mauvaise priorisation si le besoin n'est pas suffisamment cadre."]
+        risks = ["Risque de mauvaise priorisation si le besoin reste insuffisamment cadre."]
 
         if technical_impacts:
             risks.append("Risque de regression technique si les composants impactes ne sont pas identifies.")
-
         if business_impacts:
-            risks.append("Risque d'impact metier si le comportement cible n'est pas valide avec les parties prenantes.")
-
+            risks.append("Risque d'impact metier si le comportement cible n'est pas valide.")
         if dependencies:
             risks.append("Risque d'oublier un systeme ou flux dependant lors de la mise en oeuvre.")
-
         if self._mentions_production(lowered):
             risks.append("Risque operationnel plus eleve si le sujet concerne deja la production.")
 
@@ -265,20 +266,16 @@ class AnalysisService:
 
         if current_behavior is None:
             questions.append("Quel est le comportement actuel observe de facon factuelle ?")
-
         if expected_behavior is None:
             questions.append("Quel est le comportement cible attendu par le metier ?")
-
         questions.append("Quel est le perimetre exact du sujet et des cas concernes ?")
 
         if dependencies:
             questions.append("Quels systemes, flux ou objets dependants doivent etre verifies ?")
-
         if "utilisateur" in lowered or "client" in lowered:
             questions.append("Quel est l'impact concret pour l'utilisateur ou le client final ?")
-
         if self._mentions_production(lowered):
-            questions.append("Le sujet est-il reproducible et quantifie en production ?")
+            questions.append("Le sujet est-il reproductible et quantifie en production ?")
 
         return questions
 
@@ -293,7 +290,6 @@ class AnalysisService:
 
     def _build_recommended_next_step(
         self,
-        expected_behavior: str | None,
         ambiguities: list[str],
         recommended_output: str,
     ) -> str:
@@ -302,10 +298,10 @@ class AnalysisService:
                 "Clarifier les zones d'incertitude, valider le comportement attendu et confirmer le perimetre "
                 f"avant de produire un livrable de type {recommended_output}."
             )
-        if expected_behavior is not None and recommended_output == "ticket":
+        if recommended_output == "ticket":
             return "Transformer cette analyse en draft ticket avec description, impacts et criteres d'acceptation."
         if recommended_output == "documentation":
-            return "Transformer cette analyse en draft de documentation structuree."
+            return "Transformer cette analyse en draft de documentation de travail."
         if recommended_output == "recipe":
             return "Transformer cette analyse en draft de recette avec cas de test cibles."
         return "Completer l'analyse avec les parties prenantes avant de decider du livrable suivant."

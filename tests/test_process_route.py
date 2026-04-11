@@ -48,7 +48,15 @@ def test_process_with_documentation_text_routes_to_documentation() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["selected_workflow"] == "documentation"
+    payload = response.json()
+    assert payload["selected_workflow"] == "documentation"
+    assert [section["title"] for section in payload["result"]["sections"]] == [
+        "Contexte",
+        "Objectif",
+        "Points cles",
+        "Questions ouvertes",
+        "Prochaines etapes",
+    ]
 
 
 def test_process_analysis_response_contains_enriched_analysis_fields() -> None:

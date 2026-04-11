@@ -31,6 +31,8 @@ def test_ticket_service_can_build_ticket_from_analysis() -> None:
     assert ticket.dependencies == analysis.dependencies
     assert ticket.open_points
     assert ticket.acceptance_criteria
+    assert ticket.description.startswith("Analyse orientee PO")
+    assert ticket.context.startswith("Ticket derive d'une analyse prealable.")
 
 
 def test_ticket_service_preserves_analysis_uncertainty() -> None:
