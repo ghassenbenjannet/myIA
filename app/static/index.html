@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shadow PO AI Workspace</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Shadow PO AI</p>
+        <h1>Workspace Artefacts</h1>
+        <p class="hero-copy">Piloter les workflows metier, relire les runs et continuer un travail sans passer par Swagger.</p>
+      </div>
+      <div class="hero-panel">
+        <div class="hero-chip">/process</div>
+        <div class="hero-chip">/runs/{run_id}</div>
+        <div class="hero-chip">/source-summary</div>
+        <div class="hero-chip">/jira-read</div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Process</h2>
+          <p>Lancer une analyse, un ticket ou une documentation a partir d'une demande libre.</p>
+        </div>
+        <form id="process-form" class="form-grid">
+          <label>
+            <span>User input</span>
+            <textarea name="user_input" rows="5" placeholder="Ex: La remise ne se calcule plus pour la commande web..."></textarea>
+          </label>
+          <label>
+            <span>Context hint</span>
+            <input name="context_hint" type="text" placeholder="Contexte optionnel">
+          </label>
+          <label>
+            <span>Target output</span>
+            <select name="target_output">
+              <option value="auto">auto</option>
+              <option value="analysis">analysis</option>
+              <option value="ticket">ticket</option>
+              <option value="documentation">documentation</option>
+            </select>
+          </label>
+          <button type="submit">Executer /process</button>
+        </form>
+        <div id="process-output" class="output"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Run Lookup</h2>
+          <p>Relire un artefact stocke et ses metadonnees de filiation.</p>
+        </div>
+        <form id="run-form" class="form-grid compact">
+          <label>
+            <span>Run ID</span>
+            <input name="run_id" type="text" placeholder="UUID du run">
+          </label>
+          <button type="submit">Lire /runs/{run_id}</button>
+        </form>
+        <div id="run-output" class="output"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Continuation</h2>
+          <p>Reprendre un run existant pour produire un nouvel artefact enfant.</p>
+        </div>
+        <form id="continue-form" class="form-grid compact">
+          <label>
+            <span>Run ID</span>
+            <input name="run_id" type="text" placeholder="UUID du run parent">
+          </label>
+          <label>
+            <span>Action</span>
+            <select name="action">
+              <option value="refine_analysis">refine_analysis</option>
+              <option value="draft_ticket">draft_ticket</option>
+              <option value="draft_documentation">draft_documentation</option>
+            </select>
+          </label>
+          <button type="submit">Executer continuation</button>
+        </form>
+        <div id="continue-output" class="output"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Source Summary</h2>
+          <p>Lire une URL ciblee et produire un resume de travail structure.</p>
+        </div>
+        <form id="source-form" class="form-grid">
+          <label>
+            <span>Source type</span>
+            <select name="source_type">
+              <option value="url">url</option>
+            </select>
+          </label>
+          <label>
+            <span>Source ref</span>
+            <input name="source_ref" type="url" placeholder="https://example.com/article">
+          </label>
+          <label>
+            <span>Context hint</span>
+            <input name="context_hint" type="text" placeholder="Contexte optionnel">
+          </label>
+          <button type="submit">Executer /source-summary</button>
+        </form>
+        <div id="source-output" class="output"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Jira Read</h2>
+          <p>Lire une issue Jira par cle et stocker un artefact compact.</p>
+        </div>
+        <form id="jira-form" class="form-grid compact">
+          <label>
+            <span>Issue key</span>
+            <input name="issue_key" type="text" placeholder="PO-123">
+          </label>
+          <button type="submit">Executer /jira-read</button>
+        </form>
+        <div id="jira-output" class="output"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
