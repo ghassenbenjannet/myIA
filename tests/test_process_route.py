@@ -102,6 +102,43 @@ def test_process_ticket_response_contains_enriched_ticket_fields() -> None:
     assert "dependencies" in result
     assert "open_points" in result
     assert "acceptance_criteria" in result
+    assert payload["intermediate_analysis"] is None
+
+
+def test_process_with_fuzzy_ticket_request_uses_intermediate_analysis() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "Sujet a clarifier sur la facturation, le comportement attendu est a confirmer.",
+            "context_hint": "Besoin de ticket mais informations encore floues",
+            "target_output": "ticket",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_workflow"] == "ticket"
+    assert payload["intermediate_analysis"] is not None
+    assert "title" in payload["result"]
+    assert "description" in payload["result"]
+    assert "Le perimetre exact ou certaines hypotheses restent a confirmer." in payload["result"]["open_points"]
+    assert "Quel est le perimetre exact du sujet et des cas concernes ?" in payload["result"]["open_points"]
+
+
+def test_process_with_clear_ticket_request_skips_intermediate_analysis() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "Bug paiement en production, erreur bloquante, le paiement doit etre valide via l'API.",
+            "context_hint": "Incident critique",
+            "target_output": "ticket",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_workflow"] == "ticket"
+    assert payload["intermediate_analysis"] is None
 
 
 def test_process_analysis_route_keeps_api_contract() -> None:
@@ -119,5 +156,6 @@ def test_process_analysis_route_keeps_api_contract() -> None:
     assert "selected_workflow" in payload
     assert "confidence" in payload
     assert "result" in payload
+    assert "intermediate_analysis" in payload
     assert "quality_checks" in payload
     assert "warnings" in payload

@@ -249,7 +249,7 @@ class AnalysisService:
         if dependencies:
             risks.append("Risque d'oublier un systeme ou flux dependant lors de la mise en oeuvre.")
 
-        if "production" in lowered or "prod" in lowered:
+        if self._mentions_production(lowered):
             risks.append("Risque operationnel plus eleve si le sujet concerne deja la production.")
 
         return risks
@@ -277,7 +277,7 @@ class AnalysisService:
         if "utilisateur" in lowered or "client" in lowered:
             questions.append("Quel est l'impact concret pour l'utilisateur ou le client final ?")
 
-        if "production" in lowered or "prod" in lowered:
+        if self._mentions_production(lowered):
             questions.append("Le sujet est-il reproducible et quantifie en production ?")
 
         return questions
@@ -309,3 +309,7 @@ class AnalysisService:
         if recommended_output == "recipe":
             return "Transformer cette analyse en draft de recette avec cas de test cibles."
         return "Completer l'analyse avec les parties prenantes avant de decider du livrable suivant."
+
+    def _mentions_production(self, lowered: str) -> bool:
+        tokens = lowered.replace(":", " ").replace(",", " ").replace(".", " ").split()
+        return "prod" in tokens or "production" in tokens
