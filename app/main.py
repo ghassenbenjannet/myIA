@@ -1,7 +1,8 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_process import router as process_router
@@ -20,7 +21,15 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/", include_in_schema=False)
-def workspace() -> FileResponse:
+def workspace():
+    frontend_app_url = os.getenv("FRONTEND_APP_URL")
+    if frontend_app_url:
+        return RedirectResponse(url=frontend_app_url, status_code=307)
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/legacy-workspace", include_in_schema=False)
+def legacy_workspace() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
