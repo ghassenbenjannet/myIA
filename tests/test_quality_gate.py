@@ -49,16 +49,26 @@ def test_quality_gate_ticket_checks_expected_fields() -> None:
             title="[BUG] Paiement KO",
             description="Paiement KO en production",
             context="Incident critique",
-            business_goal="Corriger le bug",
-            acceptance_criteria=["Le comportement attendu est defini"],
-            dependencies=[],
-            open_points=[],
+            current_behavior="Le paiement echoue en production.",
+            expected_behavior="Le paiement doit etre accepte.",
+            business_goal="Corriger le comportement observe et securiser le parcours impacte.",
+            business_impacts=["Le parcours client peut etre degrade."],
+            technical_impacts=["Des interfaces API peuvent etre impactees."],
+            dependencies=["Verifier les API ou services exposes."],
+            open_points=["Confirmer la reproductibilite en production."],
+            acceptance_criteria=["Le comportement attendu cible est formule de facon testable."],
         ),
     )
 
     assert "ticket_title_present" in result["quality_checks"]
     assert "ticket_description_present" in result["quality_checks"]
+    assert "ticket_business_goal_present" in result["quality_checks"]
     assert "ticket_acceptance_criteria_present" in result["quality_checks"]
+    assert "ticket_open_points_present" in result["quality_checks"]
+    assert "ticket_dependencies_present" in result["quality_checks"]
+    assert "ticket_current_behavior_present" in result["quality_checks"]
+    assert "ticket_expected_behavior_present" in result["quality_checks"]
+    assert "ticket_impacts_present" in result["quality_checks"]
 
 
 def test_quality_gate_documentation_checks_expected_fields() -> None:

@@ -76,6 +76,34 @@ def test_process_analysis_response_contains_enriched_analysis_fields() -> None:
     assert "recommended_output" in result
 
 
+def test_process_ticket_response_contains_enriched_ticket_fields() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": (
+                "Bug en production: le paiement ne fonctionne plus pour certains utilisateurs. "
+                "Le comportement attendu doit permettre un paiement valide via l'API."
+            ),
+            "context_hint": "Incident critique sur le parcours de commande",
+            "target_output": "auto",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    result = payload["result"]
+    assert payload["selected_workflow"] == "ticket"
+    assert "title" in result
+    assert "description" in result
+    assert "context" in result
+    assert "business_goal" in result
+    assert "business_impacts" in result
+    assert "technical_impacts" in result
+    assert "dependencies" in result
+    assert "open_points" in result
+    assert "acceptance_criteria" in result
+
+
 def test_process_analysis_route_keeps_api_contract() -> None:
     response = client.post(
         "/process",
