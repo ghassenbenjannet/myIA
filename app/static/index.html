@@ -7,25 +7,53 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand-lockup">
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
         <span class="brand-badge">Shadow PO AI</span>
         <div>
-          <h1>Workspace</h1>
-          <p>Read-first, artefacts metier, topics et continuations dans une seule interface.</p>
+          <strong>Workspace Produit</strong>
+          <p>Topic -> Timeline -> Artefacts -> Actions suivantes</p>
         </div>
       </div>
-      <nav class="topnav" aria-label="Navigation principale">
+
+      <nav class="sidebar-nav" aria-label="Navigation principale">
         <a href="#overview-section">Vue d'ensemble</a>
         <a href="#topics-section">Topics</a>
-        <a href="#actions-section">Actions</a>
+        <a href="#new-work-section">Nouveau travail</a>
         <a href="#reads-section">Reads</a>
         <a href="#lookup-section">Lookup</a>
       </nav>
-    </header>
 
-    <main class="app-main">
+      <div class="sidebar-card">
+        <p class="panel-kicker">Reprendre</p>
+        <h3>Travail recent</h3>
+        <p>Relire un run, recharger un topic ou reprendre une continuation sans repartir de zero.</p>
+        <div class="sidebar-actions">
+          <a class="sidebar-link" href="#topics-section">Ouvrir les topics</a>
+          <a class="sidebar-link" href="#lookup-section">Relire un run</a>
+        </div>
+      </div>
+    </aside>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div>
+            <h1>Workspace</h1>
+            <p>Read-first, artefacts metier, topics et continuations dans une seule interface.</p>
+          </div>
+        </div>
+        <nav class="topnav" aria-label="Navigation rapide">
+          <a href="#overview-section">Vue d'ensemble</a>
+          <a href="#topics-section">Topics</a>
+          <a href="#new-work-section">Nouveau travail</a>
+          <a href="#reads-section">Reads</a>
+          <a href="#lookup-section">Lookup</a>
+        </nav>
+      </header>
+
+      <main class="app-main">
       <section id="overview-section" class="hero-panel">
         <div class="hero-copy">
           <p class="eyebrow">Shadow PO AI Workspace</p>
@@ -64,6 +92,15 @@
           <span class="metric-label">Dernier focus</span>
           <strong id="workspace-focus">Aucun</strong>
           <p>Le dernier run utile est reinjecte dans le lookup et la continuation.</p>
+        </article>
+        <article class="metric-card metric-card-accent">
+          <span class="metric-label">Reprendre</span>
+          <strong>Fast lane</strong>
+          <p>Revenir sur un sujet recent, reprendre un artefact utile ou lancer un nouveau travail depuis le bon point d'entree.</p>
+          <div class="metric-actions">
+            <a class="hero-link" href="#new-work-section">Nouveau travail</a>
+            <a class="hero-link ghost-link" href="#topics-section">Topics recents</a>
+          </div>
         </article>
       </section>
 
@@ -111,11 +148,11 @@
           </div>
         </section>
 
-        <section id="actions-section" class="panel panel-primary">
+        <section id="new-work-section" class="panel panel-primary">
           <div class="panel-header">
             <div>
-              <p class="panel-kicker">Action principale</p>
-              <h3>Process</h3>
+              <p class="panel-kicker">Nouveau travail</p>
+              <h3>Demande metier</h3>
             </div>
             <p>Exprimer un besoin metier exploitable, puis laisser le backend router vers l'artefact le plus utile.</p>
           </div>
@@ -147,7 +184,7 @@
           <div id="process-output" class="output"></div>
         </section>
 
-        <section class="panel">
+        <section id="actions-section" class="panel">
           <div class="panel-header">
             <div>
               <p class="panel-kicker">Action rapide</p>
@@ -257,8 +294,24 @@
           </form>
           <div id="run-output" class="output"></div>
         </section>
+
+        <section class="panel panel-span-two">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Historique de travail</p>
+              <h3>Lookup et reprise</h3>
+            </div>
+            <p>Retrouver rapidement un run ou reprendre un artefact deja produit dans le bon contexte.</p>
+          </div>
+          <div class="history-strip">
+            <a class="history-link" href="#lookup-section">Run lookup</a>
+            <a class="history-link" href="#topics-section">Dossier topic</a>
+            <a class="history-link" href="#actions-section">Continuation</a>
+          </div>
+        </section>
       </section>
-    </main>
+      </main>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

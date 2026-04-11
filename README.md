@@ -401,3 +401,20 @@ La prochaine étape du projet est la rédaction de la **spec technique MVP v1**,
 * le premier backlog de développement
 
 Ce document servira ensuite de base à la génération du squelette de code.
+---
+
+## Lancement Docker en developpement
+
+Le projet peut etre lance en developpement via Docker Compose avec :
+
+```bash
+docker compose up --build
+```
+
+URLs disponibles :
+
+- backend FastAPI : `http://localhost:8000`
+- frontend React/Vite : `http://localhost:5173`
+- front statique FastAPI temporaire : `http://localhost:8000/`
+
+Le backend reste servi par le service `app`. Le nouveau frontend React vit dans `frontend/`, tourne dans son propre conteneur Vite, et proxy les appels API vers le backend sans changer les contrats existants.
