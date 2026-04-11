@@ -43,6 +43,13 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_workspace_front_returns_200() -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Shadow PO AI Workspace" in response.text
+
+
 def test_process_with_ambiguous_text_returns_200() -> None:
     response = client.post(
         "/process",
