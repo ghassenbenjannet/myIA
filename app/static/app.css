@@ -234,6 +234,20 @@ button.ghost {
   border-color: #bad9cb;
 }
 
+.message.info {
+  color: var(--muted);
+  background: #faf5ee;
+  border-color: var(--panel-border);
+}
+
+.helper-message {
+  margin-top: -2px;
+}
+
+.is-hidden {
+  display: none;
+}
+
 .artifact-card {
   border: 1px solid var(--panel-border);
   border-radius: 18px;
@@ -312,7 +326,7 @@ button.ghost {
 }
 
 .recent-runs.empty::before {
-  content: "Aucun run recent memorise pour l'instant.";
+  content: "Aucun artefact recent memorise dans cette session.";
   color: var(--muted);
 }
 
@@ -333,6 +347,12 @@ button.ghost {
   font-size: 0.9rem;
 }
 
+.recent-meta span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #faf5ee;
+}
+
 .recent-title {
   display: flex;
   justify-content: space-between;
@@ -343,6 +363,12 @@ button.ghost {
 
 .recent-title strong {
   font-size: 1rem;
+}
+
+.recent-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
 .topics-layout {

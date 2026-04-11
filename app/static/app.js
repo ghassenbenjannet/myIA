@@ -1,6 +1,8 @@
 const RECENT_RUNS_KEY = "shadow-po-recent-runs";
 const MAX_RECENT_RUNS = 8;
 let currentTopicId = null;
+let topicsListState = "idle";
+let selectedTopicState = "unselected";
 
 function stringify(value) {
   return JSON.stringify(value, null, 2);
@@ -54,6 +56,20 @@ function applyLatestRun(runId) {
   }
   setLookupRunId(runId);
   setContinuationRunId(runId);
+}
+
+function clearLookupRunIdIfMatches(runId) {
+  const input = getField("run-form", "run_id");
+  if (input && input.value === runId) {
+    input.value = "";
+  }
+}
+
+function clearContinuationRunIdIfMatches(runId) {
+  const input = getField("continue-form", "run_id");
+  if (input && input.value === runId) {
+    input.value = "";
+  }
 }
 
 function submitForm(formId) {
@@ -121,10 +137,13 @@ function renderRunActions(runId, options = {}) {
   if (!runId) {
     return "";
   }
+  const availableActions = options.availableActions || [];
   return `
     <div class="action-bar">
       <button class="secondary" type="button" data-run-action="lookup" data-run-id="${escapeHtml(runId)}">Relire ce run</button>
-      <button class="ghost" type="button" data-run-action="continue" data-run-id="${escapeHtml(runId)}">Continuer ce run</button>
+      ${availableActions.length
+        ? `<button class="ghost" type="button" data-run-action="continue" data-run-id="${escapeHtml(runId)}" data-run-actions="${escapeHtml(availableActions.join(","))}">Continuer ce run</button>`
+        : ""}
       ${options.parentRunId
         ? `<button class="ghost" type="button" data-run-action="lookup" data-run-id="${escapeHtml(options.parentRunId)}">Relire le parent</button>`
         : ""}
@@ -241,6 +260,23 @@ function renderJiraIssue(result) {
   `;
 }
 
+function renderConfluencePage(result) {
+  return `
+    <div class="artifact-card">
+      <h3>${escapeHtml(result.title || result.page_id || "Confluence page")}</h3>
+      ${renderKvGrid([
+        ["Page ID", result.page_id],
+        ["Space", result.space_key],
+        ["URL", result.url],
+      ])}
+      ${renderText("Summary", result.summary)}
+      ${renderText("Content preview", result.content_preview)}
+      ${renderList("Key points", result.key_points)}
+      ${renderList("Open points", result.open_points)}
+    </div>
+  `;
+}
+
 function renderUnknown(result) {
   return `
     <div class="artifact-card">
@@ -271,6 +307,9 @@ function renderArtifact(result) {
   if ("issue_key" in result && "summary" in result) {
     return renderJiraIssue(result);
   }
+  if ("page_id" in result && "content_preview" in result) {
+    return renderConfluencePage(result);
+  }
   return renderUnknown(result);
 }
 
@@ -283,6 +322,42 @@ function renderRawBlock(payload) {
       </details>
     </div>
   `;
+}
+
+function renderEmptyCard(message) {
+  return `<div class="message info">${escapeHtml(message)}</div>`;
+}
+
+function inferAvailableActionsFromArtifact(result) {
+  if (!result) {
+    return [];
+  }
+  if ("reformulation" in result && "recommended_output" in result) {
+    return ["refine_analysis", "draft_ticket", "draft_documentation"];
+  }
+  if ("source_type" in result && "next_step_hint" in result) {
+    return ["refine_analysis", "draft_ticket", "draft_documentation"];
+  }
+  if ("issue_key" in result && "summary" in result) {
+    return ["refine_analysis", "draft_ticket", "draft_documentation"];
+  }
+  return [];
+}
+
+function renderTopicDetailState(state, message = "") {
+  if (state === "loading") {
+    return renderEmptyCard("Chargement du dossier topic...");
+  }
+  if (state === "error") {
+    return `<div class="message error">${escapeHtml(message || "Le dossier topic n'a pas pu etre charge.")}</div>`;
+  }
+  if (state === "empty") {
+    return renderEmptyCard(
+      message ||
+        "Aucun sujet cote serveur pour l'instant. Lancez un process, un read ou une continuation pour creer un dossier."
+    );
+  }
+  return renderEmptyCard(message || "Selectionnez un topic pour ouvrir son dossier de travail.");
 }
 
 function renderProcessMetaCard(title, payload) {
@@ -299,14 +374,15 @@ function renderProcessMetaCard(title, payload) {
         ["Selected workflow", payload.selected_workflow],
         ["Confidence", payload.confidence],
       ])}
-      ${renderRunActions(payload.run_id)}
+      ${renderRunActions(payload.run_id, { availableActions: payload.available_actions || [] })}
     </div>
   `;
 }
 
 function renderProcessLike(payload) {
+  const availableActions = inferAvailableActionsFromArtifact(payload.result);
   return `
-    ${renderProcessMetaCard("Execution metadata", payload)}
+    ${renderProcessMetaCard("Execution metadata", { ...payload, available_actions: availableActions })}
     <div class="artifact-card">
       <h3>Decision quality</h3>
       ${renderList("Quality checks", payload.quality_checks || [])}
@@ -332,6 +408,7 @@ function renderProcessLike(payload) {
 }
 
 function renderRun(payload) {
+  const availableActions = inferAvailableActionsFromArtifact(payload.result);
   return `
     <div class="artifact-card">
       <h3 class="run-focus">
@@ -349,7 +426,10 @@ function renderRun(payload) {
         ["Final workflow", payload.final_workflow],
         ["Created at", payload.created_at],
       ])}
-      ${renderRunActions(payload.run_id, { parentRunId: payload.parent_run_id })}
+      ${renderRunActions(payload.run_id, {
+        parentRunId: payload.parent_run_id,
+        availableActions,
+      })}
       ${renderText("Raw input", payload.raw_input)}
     </div>
     ${renderArtifact(payload.result)}
@@ -389,20 +469,24 @@ function renderTopicSummary(topic) {
 }
 
 function renderTopicRunCard(run) {
+  const workflowLabel = formatWorkflowLabel(run.final_workflow);
   return `
     <div class="topic-run-card">
-      <h4>${escapeHtml(run.final_workflow)} <span class="topic-chip">${escapeHtml(run.run_id)}</span></h4>
+      <h4>${escapeHtml(workflowLabel)} <span class="topic-chip">${escapeHtml(run.run_id)}</span></h4>
       ${renderKvGrid([
         ["Run ID", run.run_id, true],
         ["Created at", formatDate(run.created_at)],
-        ["Workflow", run.final_workflow],
-        ["Request type", run.request_type],
+        ["Artefact", workflowLabel],
+        ["Origine", formatRequestTypeLabel(run.request_type)],
         ["Parent run ID", run.parent_run_id],
         ["Continuation action", run.continuation_action],
       ])}
       ${renderText("Raw input", run.raw_input)}
       ${run.available_actions?.length ? renderList("Available actions", run.available_actions) : ""}
-      ${renderRunActions(run.run_id, { parentRunId: run.parent_run_id })}
+      ${renderRunActions(run.run_id, {
+        parentRunId: run.parent_run_id,
+        availableActions: run.available_actions || [],
+      })}
     </div>
   `;
 }
@@ -430,7 +514,10 @@ function renderTopicDetail(payload) {
             ["Workflow", payload.root_run.final_workflow],
             ["Created at", formatDate(payload.root_run.created_at)],
           ])}
-          ${renderRunActions(payload.root_run.run_id, { parentRunId: payload.root_run.parent_run_id })}
+          ${renderRunActions(payload.root_run.run_id, {
+            parentRunId: payload.root_run.parent_run_id,
+            availableActions: payload.root_run.available_actions || [],
+          })}
         </div>
       `
       : ""}
@@ -446,7 +533,10 @@ function renderTopicDetail(payload) {
           ${payload.latest_run.available_actions?.length
             ? renderList("Available actions", payload.latest_run.available_actions)
             : ""}
-          ${renderRunActions(payload.latest_run.run_id, { parentRunId: payload.latest_run.parent_run_id })}
+          ${renderRunActions(payload.latest_run.run_id, {
+            parentRunId: payload.latest_run.parent_run_id,
+            availableActions: payload.latest_run.available_actions || [],
+          })}
         </div>
       `
       : ""}
@@ -458,6 +548,15 @@ function renderTopicDetail(payload) {
     </div>
     ${renderRawBlock(payload)}
   `;
+}
+
+function renderTopicDetailPanel(state, payload = null, message = "") {
+  const container = document.getElementById("topic-detail");
+  if (state === "loaded" && payload) {
+    container.innerHTML = renderTopicDetail(payload);
+    return;
+  }
+  container.innerHTML = renderTopicDetailState(state, message);
 }
 
 function removeInlineStatus(container) {
@@ -485,6 +584,12 @@ function saveRecentRuns(items) {
   window.localStorage.setItem(RECENT_RUNS_KEY, JSON.stringify(items));
 }
 
+function removeRecentRun(runId) {
+  const filtered = getRecentRuns().filter((item) => item.run_id !== runId);
+  saveRecentRuns(filtered);
+  renderRecentRuns();
+}
+
 function rememberRun(entry) {
   if (!entry?.run_id) {
     return;
@@ -504,6 +609,53 @@ function rememberRun(entry) {
   loadTopics();
 }
 
+function formatWorkflowLabel(value) {
+  const labels = {
+    analysis: "Analyse",
+    ticket: "Ticket",
+    documentation: "Documentation",
+    source_summary: "Resume source",
+    jira_read: "Lecture Jira",
+    confluence_read: "Lecture Confluence",
+  };
+  return labels[value] || value || "Artefact";
+}
+
+function formatRequestTypeLabel(value) {
+  const labels = {
+    analysis: "Analyse",
+    ticket: "Ticket",
+    documentation: "Documentation",
+    source_summary: "Source",
+    jira_read: "Jira",
+    confluence_read: "Confluence",
+  };
+  return labels[value] || value || "Run";
+}
+
+function formatRecentRunSource(value) {
+  const labels = {
+    process: "Demande traitee dans le workspace",
+    run_lookup: "Artefact relu dans le workspace",
+    continuation: "Artefact issu d'une continuation",
+    source_summary: "Artefact issu d'une lecture source",
+    jira_read: "Artefact issu d'une lecture Jira",
+    confluence_read: "Artefact issu d'une lecture Confluence",
+  };
+  return labels[value] || "Run memorise";
+}
+
+function buildRecentRunSubtitle(item) {
+  const parts = [];
+  if (item.source) {
+    parts.push(formatRecentRunSource(item.source));
+  }
+  if (item.parent_run_id) {
+    parts.push(`Parent ${item.parent_run_id}`);
+  }
+  return parts.join(" · ");
+}
+
 function renderRecentRuns() {
   const container = document.getElementById("recent-runs");
   const recentRuns = getRecentRuns();
@@ -519,22 +671,63 @@ function renderRecentRuns() {
       (item) => `
         <div class="recent-item">
           <div class="recent-title">
-            <strong>${escapeHtml(item.run_id)}</strong>
+            <strong>${escapeHtml(formatWorkflowLabel(item.workflow))}</strong>
             <div class="action-bar">
               <button class="secondary" type="button" data-run-action="lookup" data-run-id="${escapeHtml(item.run_id)}">Relire</button>
-              <button class="ghost" type="button" data-run-action="continue" data-run-id="${escapeHtml(item.run_id)}">Continuer</button>
+              ${item.available_actions?.length
+                ? `<button class="ghost" type="button" data-run-action="continue" data-run-id="${escapeHtml(item.run_id)}" data-run-actions="${escapeHtml(item.available_actions.join(","))}">Continuer</button>`
+                : ""}
             </div>
           </div>
+          <p class="recent-subtitle">${escapeHtml(buildRecentRunSubtitle(item))}</p>
           <div class="recent-meta">
-            ${item.workflow ? `<span>workflow: ${escapeHtml(item.workflow)}</span>` : ""}
-            ${item.request_type ? `<span>type: ${escapeHtml(item.request_type)}</span>` : ""}
-            ${item.parent_run_id ? `<span>parent: ${escapeHtml(item.parent_run_id)}</span>` : ""}
-            ${item.source ? `<span>source: ${escapeHtml(item.source)}</span>` : ""}
+            <span>Run ${escapeHtml(item.run_id)}</span>
+            ${item.workflow ? `<span>${escapeHtml(formatWorkflowLabel(item.workflow))}</span>` : ""}
           </div>
         </div>
       `
     )
     .join("");
+}
+
+function resetContinuationFormAvailability() {
+  const actionField = getField("continue-form", "action");
+  if (!actionField) {
+    return;
+  }
+  Array.from(actionField.options).forEach((option) => {
+    option.disabled = false;
+  });
+}
+
+function applyContinuationAvailability(runId, availableActions) {
+  setContinuationRunId(runId);
+  const actionField = getField("continue-form", "action");
+  const output = document.getElementById("continue-output");
+  if (!actionField) {
+    return;
+  }
+
+  resetContinuationFormAvailability();
+
+  if (!availableActions.length) {
+    actionField.value = "";
+    Array.from(actionField.options).forEach((option) => {
+      if (option.value) {
+        option.disabled = true;
+      }
+    });
+    showInlineStatus(output, "info", "Aucune continuation disponible pour ce run.");
+    return;
+  }
+
+  Array.from(actionField.options).forEach((option) => {
+    if (option.value && !availableActions.includes(option.value)) {
+      option.disabled = true;
+    }
+  });
+  actionField.value = availableActions[0];
+  showInlineStatus(output, "ok", `Continuation prete avec l'action ${availableActions[0]}.`);
 }
 
 async function apiRequest(path, options = {}) {
@@ -548,40 +741,96 @@ async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     const detail = payload?.detail || `HTTP ${response.status}`;
-    throw new Error(`${response.status} - ${detail}`);
+    const error = new Error(`${response.status} - ${detail}`);
+    error.status = response.status;
+    error.detail = detail;
+    error.path = path;
+    throw error;
   }
   return payload;
 }
 
 async function loadTopics() {
   const container = document.getElementById("topics-list");
+  topicsListState = "loading";
   container.classList.remove("empty");
   container.innerHTML = `<div class="message ok inline-status">Chargement des topics...</div>`;
   try {
     const topics = await apiRequest("/topics");
     if (!topics.length) {
+      topicsListState = "empty";
       container.innerHTML = "";
       container.classList.add("empty");
+      currentTopicId = null;
+      if (selectedTopicState !== "loaded") {
+        selectedTopicState = "empty";
+        renderTopicDetailPanel("empty");
+      }
       return;
     }
+    topicsListState = "loaded";
     container.classList.remove("empty");
     container.innerHTML = topics.map(renderTopicSummary).join("");
+    if (selectedTopicState !== "loaded" && selectedTopicState !== "loading") {
+      selectedTopicState = "unselected";
+      renderTopicDetailPanel("unselected");
+    }
   } catch (error) {
+    topicsListState = "error";
     container.innerHTML = `<div class="message error">${escapeHtml(error.message || "Erreur reseau")}</div>`;
+    if (selectedTopicState !== "loaded") {
+      selectedTopicState = "error";
+      renderTopicDetailPanel("error", null, "La liste des topics n'a pas pu etre chargee.");
+    }
   }
 }
 
 async function openTopic(topicId) {
-  const container = document.getElementById("topic-detail");
-  showInlineStatus(container, "ok", "Chargement du topic...");
+  selectedTopicState = "loading";
+  renderTopicDetailPanel("loading");
   try {
     const payload = await apiRequest(`/topics/${encodeURIComponent(topicId)}`);
     currentTopicId = topicId;
-    container.innerHTML = renderTopicDetail(payload);
+    selectedTopicState = "loaded";
+    renderTopicDetailPanel("loaded", payload);
     renderRecentRuns();
     await loadTopics();
   } catch (error) {
-    showInlineStatus(container, "error", error.message || "Erreur reseau");
+    selectedTopicState = "error";
+    renderTopicDetailPanel("error", null, error.message || "Erreur reseau");
+  }
+}
+
+function handleStaleRun(runId, targetOutput, statusContainer) {
+  removeRecentRun(runId);
+  clearLookupRunIdIfMatches(runId);
+  clearContinuationRunIdIfMatches(runId);
+  resetContinuationFormAvailability();
+  if (statusContainer) {
+    showInlineStatus(
+      statusContainer,
+      "error",
+      `Le run ${runId} n'existe plus cote serveur, probablement apres redemarrage du backend in-memory.`
+    );
+  }
+  if (targetOutput && !targetOutput.innerHTML.trim()) {
+    targetOutput.innerHTML = renderEmptyCard("Le run demande n'est plus disponible cote serveur.");
+  }
+}
+
+async function validateLatestRunPrefill() {
+  const latestRun = getRecentRuns()[0]?.run_id;
+  if (!latestRun) {
+    return;
+  }
+
+  try {
+    await apiRequest(`/runs/${encodeURIComponent(latestRun)}`);
+    applyLatestRun(latestRun);
+  } catch (error) {
+    if (error.status === 404) {
+      handleStaleRun(latestRun, document.getElementById("run-output"), document.getElementById("recent-runs"));
+    }
   }
 }
 
@@ -597,6 +846,12 @@ function bindJsonForm(formId, outputId, buildRequest, requestFn, renderFn, onSuc
       output.innerHTML = renderFn(payload);
       onSuccess?.(payload);
     } catch (error) {
+      const built = buildRequest(new FormData(form));
+      const runId = typeof built === "string" ? built : built?.run_id;
+      if (error.status === 404 && runId) {
+        handleStaleRun(runId, output, output);
+        return;
+      }
       showInlineStatus(output, "error", error.message || "Erreur reseau");
     }
   });
@@ -617,6 +872,7 @@ bindJsonForm(
       run_id: payload.run_id,
       workflow: payload.selected_workflow,
       request_type: payload.request_type,
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
       source: "process",
     })
 );
@@ -633,6 +889,7 @@ bindJsonForm(
       workflow: payload.final_workflow,
       request_type: payload.request_type,
       parent_run_id: payload.parent_run_id,
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
       source: "run_lookup",
     })
 );
@@ -655,6 +912,7 @@ bindJsonForm(
       run_id: payload.run_id,
       workflow: payload.selected_workflow,
       request_type: payload.request_type,
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
       source: "continuation",
     })
 );
@@ -675,6 +933,7 @@ bindJsonForm(
       request_type: "source_summary",
       selected_workflow: "source_summary",
       confidence: "n/a",
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
     })}
     ${renderArtifact(payload.result)}
     ${renderRawBlock(payload)}
@@ -684,6 +943,7 @@ bindJsonForm(
       run_id: payload.run_id,
       workflow: "source_summary",
       request_type: "source_summary",
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
       source: "source_summary",
     })
 );
@@ -702,6 +962,7 @@ bindJsonForm(
       request_type: "jira_read",
       selected_workflow: "jira_read",
       confidence: "n/a",
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
     })}
     ${renderArtifact(payload.result)}
     ${renderRawBlock(payload)}
@@ -711,7 +972,37 @@ bindJsonForm(
       run_id: payload.run_id,
       workflow: "jira_read",
       request_type: "jira_read",
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
       source: "jira_read",
+    })
+);
+
+bindJsonForm(
+  "confluence-form",
+  "confluence-output",
+  (formData) => ({
+    page_id: formData.get("page_id"),
+  }),
+  (payload) => apiRequest("/confluence-read", { method: "POST", body: stringify(payload) }),
+  (payload) => `
+    ${renderProcessMetaCard("Confluence read metadata", {
+      run_id: payload.run_id,
+      topic_id: payload.topic_id,
+      request_type: "confluence_read",
+      selected_workflow: "confluence_read",
+      confidence: "n/a",
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
+    })}
+    ${renderArtifact(payload.result)}
+    ${renderRawBlock(payload)}
+  `,
+  (payload) =>
+    rememberRun({
+      run_id: payload.run_id,
+      workflow: "confluence_read",
+      request_type: "confluence_read",
+      available_actions: inferAvailableActionsFromArtifact(payload.result),
+      source: "confluence_read",
     })
 );
 
@@ -733,7 +1024,12 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "continue") {
+    const actions = (button.getAttribute("data-run-actions") || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
     prepareContinuation(runId);
+    applyContinuationAvailability(runId, actions);
   }
 });
 
@@ -755,9 +1051,39 @@ document.getElementById("topics-refresh")?.addEventListener("click", () => {
   loadTopics();
 });
 
-const latestRun = getRecentRuns()[0]?.run_id;
-if (latestRun) {
-  applyLatestRun(latestRun);
-}
+getField("continue-form", "run_id")?.addEventListener("input", () => {
+  resetContinuationFormAvailability();
+});
+
+getField("process-form", "user_input")?.addEventListener("input", (event) => {
+  const value = event.target.value || "";
+  const normalized = value.toLowerCase();
+  const lineCount = value.split(/\r?\n/).length;
+  let score = 0;
+
+  if (value.length > 1200) {
+    score += 1;
+  }
+  if (lineCount > 18) {
+    score += 1;
+  }
+  if (/^\s*(diff --git|@@ |\+\+\+ |--- )/m.test(value)) {
+    score += 2;
+  }
+  if (/\b(traceback|exception|stack trace|nullpointer|error:|warn:|debug:|info:)\b/.test(normalized)) {
+    score += 1;
+  }
+  if (/\b(select\s+.+\s+from|post\s+\/|get\s+\/|patch\s+\/|put\s+\/|delete\s+\/)\b/.test(normalized)) {
+    score += 1;
+  }
+  if (/[{}\[\]]/.test(value) && lineCount > 8) {
+    score += 1;
+  }
+
+  document.getElementById("process-warning")?.classList.toggle("is-hidden", score < 2);
+});
+
+renderTopicDetailPanel("unselected");
 renderRecentRuns();
 loadTopics();
+validateLatestRunPrefill();
