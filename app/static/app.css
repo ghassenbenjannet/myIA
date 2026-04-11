@@ -113,6 +113,25 @@ body {
   color: var(--muted);
 }
 
+.subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.subhead h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .form-grid {
   display: grid;
   gap: 14px;
@@ -326,6 +345,82 @@ button.ghost {
   font-size: 1rem;
 }
 
+.topics-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 18px;
+}
+
+.topics-list {
+  display: grid;
+  gap: 12px;
+}
+
+.topics-list.empty::before {
+  content: "Aucun topic disponible pour l'instant.";
+  color: var(--muted);
+}
+
+.topic-summary {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px;
+}
+
+.topic-summary.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(143, 61, 46, 0.18);
+}
+
+.topic-summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topic-summary-head strong {
+  font-size: 1rem;
+}
+
+.topic-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #faf5ee;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.topic-run-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.topic-run-list {
+  display: grid;
+  gap: 12px;
+}
+
+.topic-run-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px;
+}
+
+.topic-run-card h4 {
+  margin: 0 0 10px;
+}
+
 .raw details {
   margin-top: 8px;
 }
@@ -343,6 +438,7 @@ pre {
 @media (max-width: 980px) {
   .hero,
   .workspace,
+  .topics-layout,
   .form-grid.compact,
   .meta-grid,
   .kv-grid {
