@@ -22,6 +22,7 @@ def test_process_with_ambiguous_text_returns_200() -> None:
     )
 
     assert response.status_code == 200
+    assert "run_id" in response.json()
 
 
 def test_process_with_bug_text_routes_to_ticket() -> None:
@@ -196,6 +197,7 @@ def test_process_analysis_route_keeps_api_contract() -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert "run_id" in payload
     assert "request_type" in payload
     assert "selected_workflow" in payload
     assert "confidence" in payload
@@ -204,3 +206,35 @@ def test_process_analysis_route_keeps_api_contract() -> None:
     assert "context_used" in payload
     assert "quality_checks" in payload
     assert "warnings" in payload
+
+
+def test_process_persists_run_and_allows_readback() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Sujet a clarifier sur la facturation, le comportement attendu est a confirmer.",
+            "context_hint": "Besoin de ticket mais informations encore floues",
+            "target_output": "ticket",
+        },
+    )
+
+    assert process_response.status_code == 200
+    process_payload = process_response.json()
+    run_id = process_payload["run_id"]
+
+    run_response = client.get(f"/runs/{run_id}")
+
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+    assert run_payload["run_id"] == run_id
+    assert run_payload["raw_input"] == "Sujet a clarifier sur la facturation, le comportement attendu est a confirmer."
+    assert run_payload["final_workflow"] == "ticket"
+    assert run_payload["result"] == process_payload["result"]
+    assert run_payload["intermediate_analysis"] == process_payload["intermediate_analysis"]
+
+
+def test_get_unknown_run_returns_404() -> None:
+    response = client.get("/runs/unknown-run-id")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Run not found"
