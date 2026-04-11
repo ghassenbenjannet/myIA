@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes_process import jira_read_service, source_summary_service
 from app.main import app
+from app.services.jira_read_service import JiraIssueNotFoundError, JiraNotConfiguredError
 
 client = TestClient(app)
 
@@ -22,11 +23,14 @@ class FakeSourceReader:
 
 
 class FakeJiraReadService:
-    def __init__(self, result=None, should_raise: bool = False) -> None:
+    def __init__(self, result=None, should_raise: bool = False, error: Exception | None = None) -> None:
         self.result = result
         self.should_raise = should_raise
+        self.error = error
 
     def read_issue(self, request) -> dict | None:
+        if self.error is not None:
+            raise self.error
         if self.should_raise:
             raise RuntimeError("jira unavailable")
         return self.result
@@ -438,7 +442,9 @@ def test_jira_read_creates_run_and_returns_structured_issue() -> None:
 
 def test_jira_read_unknown_issue_returns_404() -> None:
     original_service = jira_read_service.read_issue
-    jira_read_service.read_issue = FakeJiraReadService(result=None).read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        error=JiraIssueNotFoundError("Jira issue not found: PO-404")
+    ).read_issue
     try:
         response = client.post(
             "/jira-read",
@@ -449,6 +455,38 @@ def test_jira_read_unknown_issue_returns_404() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Jira issue not found"
+
+
+def test_jira_read_service_error_returns_502() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(should_raise=True).read_issue
+    try:
+        response = client.post(
+            "/jira-read",
+            json={"issue_key": "PO-500"},
+        )
+    finally:
+        jira_read_service.read_issue = original_service
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Jira issue could not be read"
+
+
+def test_jira_read_not_configured_returns_503() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        error=JiraNotConfiguredError("Jira client is not configured")
+    ).read_issue
+    try:
+        response = client.post(
+            "/jira-read",
+            json={"issue_key": "PO-503"},
+        )
+    finally:
+        jira_read_service.read_issue = original_service
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Jira is not configured"
 
 
 def test_jira_read_invalid_request_returns_422() -> None:

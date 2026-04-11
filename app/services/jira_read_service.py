@@ -4,6 +4,14 @@ from app.schemas.jira_request import JiraReadRequest
 from app.schemas.jira_result import JiraIssueResult
 
 
+class JiraNotConfiguredError(Exception):
+    pass
+
+
+class JiraIssueNotFoundError(Exception):
+    pass
+
+
 class JiraReadService:
     """
     Minimal readonly Jira service.
@@ -20,9 +28,12 @@ class JiraReadService:
         )
 
     def read_issue(self, request: JiraReadRequest) -> JiraIssueResult | None:
+        if not self.jira_client.enabled:
+            raise JiraNotConfiguredError("Jira client is not configured")
+
         payload = self.jira_client.get_issue(request.issue_key)
         if payload is None:
-            return None
+            raise JiraIssueNotFoundError(f"Jira issue not found: {request.issue_key}")
 
         description = payload.get("description")
         status = payload.get("status")

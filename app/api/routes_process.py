@@ -9,7 +9,11 @@ from app.schemas.response import ProcessResponse
 from app.schemas.source_request import SourceSummaryRequest
 from app.schemas.source_response import SourceSummaryResponse
 from app.schemas.work_memory import WorkMemoryRun
-from app.services.jira_read_service import JiraReadService
+from app.services.jira_read_service import (
+    JiraIssueNotFoundError,
+    JiraNotConfiguredError,
+    JiraReadService,
+)
 from app.services.source_summary_service import SourceSummaryService
 from app.services.work_memory_repository import work_memory_repository
 
@@ -57,11 +61,12 @@ def source_summary(request: SourceSummaryRequest) -> SourceSummaryResponse:
 def jira_read(request: JiraReadRequest) -> JiraReadResponse:
     try:
         result = jira_read_service.read_issue(request)
+    except JiraNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail="Jira is not configured") from exc
+    except JiraIssueNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Jira issue not found") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Jira issue could not be read") from exc
-
-    if result is None:
-        raise HTTPException(status_code=404, detail="Jira issue not found")
 
     run = work_memory_repository.create_run(
         raw_input=request.issue_key,
