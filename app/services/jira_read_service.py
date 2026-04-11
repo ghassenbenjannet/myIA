@@ -12,6 +12,10 @@ class JiraIssueNotFoundError(Exception):
     pass
 
 
+class JiraReadFailedError(Exception):
+    pass
+
+
 class JiraReadService:
     """
     Minimal readonly Jira service.
@@ -31,11 +35,14 @@ class JiraReadService:
         if not self.jira_client.enabled:
             raise JiraNotConfiguredError("Jira client is not configured")
 
-        payload = self.jira_client.get_issue(request.issue_key)
+        try:
+            payload = self.jira_client.get_issue(request.issue_key)
+        except Exception as exc:
+            raise JiraReadFailedError(f"Jira issue could not be read: {request.issue_key}") from exc
         if payload is None:
             raise JiraIssueNotFoundError(f"Jira issue not found: {request.issue_key}")
 
-        description = payload.get("description")
+        description = self._normalize_description(payload.get("description"))
         status = payload.get("status")
         issue_type = payload.get("issue_type")
         priority = payload.get("priority")
@@ -60,6 +67,7 @@ class JiraReadService:
             ),
             open_points=self._build_open_points(
                 description=description,
+                title=payload.get("title"),
                 assignee=assignee,
                 priority=priority,
             ),
@@ -84,14 +92,25 @@ class JiraReadService:
     def _build_open_points(
         self,
         description: str | None,
+        title: str | None,
         assignee: str | None,
         priority: str | None,
     ) -> list[str]:
         open_points: list[str] = []
         if not description:
             open_points.append("La description Jira doit etre completee ou confirmee.")
+        elif len(description) < 40:
+            open_points.append("La description Jira reste partielle et doit etre precisee.")
+        if not title:
+            open_points.append("Le titre Jira doit etre confirme.")
         if not assignee:
             open_points.append("L'owner ou l'assignation doivent etre confirmes.")
         if not priority:
             open_points.append("La priorite doit etre confirmee.")
         return open_points
+
+    def _normalize_description(self, description: str | None) -> str | None:
+        if description is None:
+            return None
+        normalized = " ".join(description.split())
+        return normalized or None

@@ -3,13 +3,14 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.analysis import AnalysisResult
+from app.schemas.confluence_result import ConfluencePageResult
 from app.schemas.context import ContextUsed
 from app.schemas.documentation import DocumentationResult
 from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
 from app.schemas.ticket import TicketResult
 
-WorkResult = AnalysisResult | TicketResult | DocumentationResult | SourceSummaryResult | JiraIssueResult
+WorkResult = AnalysisResult | TicketResult | DocumentationResult | SourceSummaryResult | JiraIssueResult | ConfluencePageResult
 
 
 class WorkMemoryRun(BaseModel):

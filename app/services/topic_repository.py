@@ -73,17 +73,32 @@ class InMemoryTopicRepository:
         ]
 
     def build_default_label(self, raw_input: str, result) -> str:
-        if hasattr(result, "title") and getattr(result, "title"):
-            return str(getattr(result, "title"))
-        if hasattr(result, "reformulation") and getattr(result, "reformulation"):
-            return str(getattr(result, "reformulation"))
-        if hasattr(result, "source_title") and getattr(result, "source_title"):
-            return str(getattr(result, "source_title"))
-        if hasattr(result, "issue_key") and hasattr(result, "title"):
-            return f"{getattr(result, 'issue_key')} - {getattr(result, 'title')}"
+        issue_key = self._get_value(result, "issue_key")
+        page_id = self._get_value(result, "page_id")
+        title = self._get_value(result, "title")
+        reformulation = self._get_value(result, "reformulation")
+        source_title = self._get_value(result, "source_title")
+
+        if issue_key and title:
+            return f"{issue_key} - {title}"
+        if page_id and title:
+            return f"Confluence {page_id} - {title}"
+        if title:
+            return str(title)
+        if reformulation:
+            return str(reformulation)
+        if source_title:
+            return str(source_title)
         if len(raw_input) > 80:
             return raw_input[:77] + "..."
         return raw_input
+
+    def _get_value(self, result, key: str):
+        if isinstance(result, dict):
+            return result.get(key)
+        if hasattr(result, key):
+            return getattr(result, key)
+        return None
 
     def get_topic_runs(self, topic_id: str):
         topic = self.get_topic(topic_id)
