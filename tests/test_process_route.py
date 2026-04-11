@@ -567,3 +567,117 @@ def test_continue_source_summary_to_ticket_uses_derived_analysis() -> None:
     child_run_payload = child_run_response.json()
     assert child_run_payload["parent_run_id"] == parent_run_id
     assert child_run_payload["continuation_action"] == "draft_ticket"
+
+
+def test_continue_jira_run_to_documentation_creates_child_run() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        result={
+            "issue_key": "PO-200",
+            "title": "Facturation a clarifier",
+            "description": "La facturation ne suit pas toujours la regle attendue sur les commandes web.",
+            "status": "To Do",
+            "issue_type": "Story",
+            "priority": "Medium",
+            "assignee": None,
+            "labels": ["facturation", "web"],
+            "url": "https://jira.example.com/browse/PO-200",
+            "summary": "Issue Jira lue: Facturation a clarifier. Type: Story. Statut: To Do. Priorite: Medium.",
+            "open_points": ["Le comportement attendu doit etre confirme avec le metier."],
+        }
+    ).read_issue
+    try:
+        jira_response = client.post("/jira-read", json={"issue_key": "PO-200"})
+    finally:
+        jira_read_service.read_issue = original_service
+
+    parent_run_id = jira_response.json()["run_id"]
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "draft_documentation"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["selected_workflow"] == "documentation"
+    assert payload["run_id"] != parent_run_id
+
+    child_run_response = client.get(f"/runs/{payload['run_id']}")
+    child_run_payload = child_run_response.json()
+    assert child_run_payload["parent_run_id"] == parent_run_id
+    assert child_run_payload["continuation_action"] == "draft_documentation"
+
+
+def test_continue_jira_run_to_analysis_creates_child_run() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        result={
+            "issue_key": "PO-201",
+            "title": "Paiement web en erreur",
+            "description": "Le paiement ne fonctionne plus pour certains utilisateurs sur la commande web.",
+            "status": "In Progress",
+            "issue_type": "Bug",
+            "priority": "High",
+            "assignee": "Jane Doe",
+            "labels": ["paiement", "commande"],
+            "url": "https://jira.example.com/browse/PO-201",
+            "summary": "Issue Jira lue: Paiement web en erreur. Type: Bug. Statut: In Progress. Priorite: High.",
+            "open_points": [],
+        }
+    ).read_issue
+    try:
+        jira_response = client.post("/jira-read", json={"issue_key": "PO-201"})
+    finally:
+        jira_read_service.read_issue = original_service
+
+    parent_run_id = jira_response.json()["run_id"]
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "refine_analysis"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["selected_workflow"] == "analysis"
+    assert payload["result"]["request_summary"]
+    assert payload["result"]["current_behavior"]
+
+
+def test_continue_jira_run_to_ticket_uses_derived_analysis() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        result={
+            "issue_key": "PO-202",
+            "title": "Remise web incoherente",
+            "description": "Le calcul de remise ne s'applique pas sur certaines commandes web.",
+            "status": "To Do",
+            "issue_type": "Bug",
+            "priority": "High",
+            "assignee": "John Doe",
+            "labels": ["remise", "commande", "web"],
+            "url": "https://jira.example.com/browse/PO-202",
+            "summary": "Issue Jira lue: Remise web incoherente. Type: Bug. Statut: To Do. Priorite: High.",
+            "open_points": ["Le comportement attendu doit etre precise."],
+        }
+    ).read_issue
+    try:
+        jira_response = client.post("/jira-read", json={"issue_key": "PO-202"})
+    finally:
+        jira_read_service.read_issue = original_service
+
+    parent_run_id = jira_response.json()["run_id"]
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "draft_ticket"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["selected_workflow"] == "ticket"
+    assert payload["intermediate_analysis"] is not None
+    assert payload["result"]["title"]
+
+    child_run_response = client.get(f"/runs/{payload['run_id']}")
+    child_run_payload = child_run_response.json()
+    assert child_run_payload["parent_run_id"] == parent_run_id
+    assert child_run_payload["continuation_action"] == "draft_ticket"

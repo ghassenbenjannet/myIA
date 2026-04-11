@@ -1,5 +1,6 @@
 from app.schemas.analysis import AnalysisResult
 from app.schemas.documentation import DocumentationResult
+from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
 
 
@@ -116,6 +117,48 @@ class DocumentationService:
                 },
             ],
             detected_type="source_summary",
+        )
+
+    def from_jira_issue(self, jira_issue: JiraIssueResult) -> DocumentationResult:
+        return DocumentationResult(
+            document_type="working_draft",
+            title=self._build_title(f"{jira_issue.issue_key} - {jira_issue.title}"),
+            summary="Document de travail derive d'un ticket Jira lu en readonly.",
+            context=f"Ticket Jira lu: {jira_issue.issue_key}",
+            sections=[
+                {
+                    "title": "Contexte",
+                    "content": jira_issue.url or jira_issue.issue_key,
+                },
+                {
+                    "title": "Objectif",
+                    "content": jira_issue.title,
+                },
+                {
+                    "title": "Points cles",
+                    "content": [
+                        item
+                        for item in [
+                            f"Statut: {jira_issue.status}" if jira_issue.status else None,
+                            f"Type: {jira_issue.issue_type}" if jira_issue.issue_type else None,
+                            f"Priorite: {jira_issue.priority}" if jira_issue.priority else None,
+                            f"Labels: {', '.join(jira_issue.labels)}" if jira_issue.labels else None,
+                            jira_issue.description,
+                        ]
+                        if item
+                    ]
+                    or [jira_issue.summary],
+                },
+                {
+                    "title": "Questions ouvertes",
+                    "content": jira_issue.open_points or ["Quels elements du ticket Jira doivent encore etre clarifies ?"],
+                },
+                {
+                    "title": "Prochaines etapes",
+                    "content": ["Clarifier le besoin attendu puis transformer ce ticket Jira en analyse ou draft exploitable."],
+                },
+            ],
+            detected_type="jira_read",
         )
 
     def _build_title(self, user_input: str) -> str:
