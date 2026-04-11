@@ -57,14 +57,29 @@ class JiraClient:
         if description is None:
             return None
         if isinstance(description, str):
-            return description
+            return self._normalize_text(description)
 
-        parts: list[str] = []
-        for block in description.get("content", []):
-            for item in block.get("content", []):
-                text = item.get("text")
-                if text:
-                    parts.append(text)
+        parts = self._extract_text_nodes(description)
         if not parts:
             return None
-        return " ".join(parts)
+        return self._normalize_text(" ".join(parts))
+
+    def _extract_text_nodes(self, node) -> list[str]:
+        if node is None:
+            return []
+        if isinstance(node, str):
+            return [node]
+        if not isinstance(node, dict):
+            return []
+
+        parts: list[str] = []
+        text = node.get("text")
+        if text:
+            parts.append(text)
+
+        for child in node.get("content", []):
+            parts.extend(self._extract_text_nodes(child))
+        return parts
+
+    def _normalize_text(self, value: str) -> str:
+        return " ".join(value.split())

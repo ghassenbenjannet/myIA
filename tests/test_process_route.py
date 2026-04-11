@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes_process import jira_read_service, source_summary_service
+from app.api.routes_process import confluence_read_service, jira_read_service, source_summary_service
 from app.main import app
 from app.services.jira_read_service import JiraIssueNotFoundError, JiraNotConfiguredError
 from app.services.topic_repository import topic_repository
@@ -37,6 +37,20 @@ class FakeJiraReadService:
         return self.result
 
 
+class FakeConfluenceReadService:
+    def __init__(self, result=None, should_raise: bool = False, error: Exception | None = None) -> None:
+        self.result = result
+        self.should_raise = should_raise
+        self.error = error
+
+    def read_page(self, request) -> dict | None:
+        if self.error is not None:
+            raise self.error
+        if self.should_raise:
+            raise RuntimeError("confluence unavailable")
+        return self.result
+
+
 def test_health_returns_ok() -> None:
     response = client.get("/health")
 
@@ -50,6 +64,7 @@ def test_workspace_front_returns_200() -> None:
     assert response.status_code == 200
     assert "Shadow PO AI Workspace" in response.text
     assert "Topics" in response.text
+    assert "/confluence-read" in response.text
 
 
 def test_process_with_ambiguous_text_returns_200() -> None:
@@ -700,6 +715,39 @@ def test_jira_read_creates_run_and_returns_structured_issue() -> None:
     topic_response = client.get(f"/topics/{payload['topic_id']}")
     assert topic_response.status_code == 200
     assert topic_response.json()["topic"]["root_run_id"] == payload["run_id"]
+    assert topic_response.json()["topic"]["topic_label"] == "PO-123 - Remise incorrecte sur commande web"
+
+
+def test_jira_read_with_partial_description_keeps_compact_artifact() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        result={
+            "issue_key": "PO-124",
+            "title": "Description partielle",
+            "description": "Court texte",
+            "status": "To Do",
+            "issue_type": "Task",
+            "priority": None,
+            "assignee": None,
+            "labels": [],
+            "url": "https://jira.example.com/browse/PO-124",
+            "summary": "Issue Jira lue: Description partielle. Type: Task. Statut: To Do.",
+            "open_points": [
+                "La description Jira reste partielle et doit etre precisee.",
+                "L'owner ou l'assignation doivent etre confirmes.",
+                "La priorite doit etre confirmee.",
+            ],
+        }
+    ).read_issue
+    try:
+        response = client.post("/jira-read", json={"issue_key": "PO-124"})
+    finally:
+        jira_read_service.read_issue = original_service
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["description"] == "Court texte"
+    assert "La description Jira reste partielle et doit etre precisee." in payload["result"]["open_points"]
 
 
 def test_jira_read_unknown_issue_returns_404() -> None:
@@ -756,6 +804,96 @@ def test_jira_read_invalid_request_returns_422() -> None:
         "/jira-read",
         json={"issue_key": ""},
     )
+
+    assert response.status_code == 422
+
+
+def test_confluence_read_creates_run_and_returns_structured_page() -> None:
+    original_service = confluence_read_service.read_page
+    confluence_read_service.read_page = FakeConfluenceReadService(
+        result={
+            "page_id": "42",
+            "title": "Regles de remise",
+            "space_key": "OPS",
+            "url": "https://confluence.example.com/wiki/spaces/OPS/pages/42",
+            "summary": "Page Confluence lue: Regles de remise. Espace: OPS. La remise s'applique sous conditions sur les commandes web.",
+            "content_preview": "La remise s'applique sous conditions sur les commandes web.",
+            "key_points": [
+                "Titre: Regles de remise.",
+                "Espace source: OPS.",
+                "La remise s'applique sous conditions sur les commandes web",
+            ],
+            "open_points": [],
+        }
+    ).read_page
+    try:
+        response = client.post("/confluence-read", json={"page_id": "42"})
+    finally:
+        confluence_read_service.read_page = original_service
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"]
+    assert payload["topic_id"]
+    assert payload["result"]["page_id"] == "42"
+    assert payload["result"]["title"] == "Regles de remise"
+
+    run_response = client.get(f"/runs/{payload['run_id']}")
+    assert run_response.status_code == 200
+    assert run_response.json()["topic_id"] == payload["topic_id"]
+    assert run_response.json()["result"]["page_id"] == "42"
+
+    topic_response = client.get(f"/topics/{payload['topic_id']}")
+    assert topic_response.status_code == 200
+    assert topic_response.json()["topic"]["topic_label"] == "Confluence 42 - Regles de remise"
+
+
+def test_confluence_read_not_found_returns_404() -> None:
+    from app.services.confluence_read_service import ConfluencePageNotFoundError
+
+    original_service = confluence_read_service.read_page
+    confluence_read_service.read_page = FakeConfluenceReadService(
+        error=ConfluencePageNotFoundError("Confluence page not found: 404")
+    ).read_page
+    try:
+        response = client.post("/confluence-read", json={"page_id": "404"})
+    finally:
+        confluence_read_service.read_page = original_service
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Confluence page not found"
+
+
+def test_confluence_read_not_configured_returns_503() -> None:
+    from app.services.confluence_read_service import ConfluenceNotConfiguredError
+
+    original_service = confluence_read_service.read_page
+    confluence_read_service.read_page = FakeConfluenceReadService(
+        error=ConfluenceNotConfiguredError("Confluence client is not configured")
+    ).read_page
+    try:
+        response = client.post("/confluence-read", json={"page_id": "503"})
+    finally:
+        confluence_read_service.read_page = original_service
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Confluence is not configured"
+
+
+def test_confluence_read_failure_returns_502() -> None:
+    original_service = confluence_read_service.read_page
+    confluence_read_service.read_page = FakeConfluenceReadService(should_raise=True).read_page
+    try:
+        response = client.post("/confluence-read", json={"page_id": "500"})
+    finally:
+        confluence_read_service.read_page = original_service
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Confluence page could not be read"
+
+
+def test_confluence_read_invalid_request_returns_422() -> None:
+    response = client.post("/confluence-read", json={"page_id": ""})
 
     assert response.status_code == 422
 

@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.analysis import AnalysisResult
+from app.schemas.confluence_result import ConfluencePageResult
 from app.schemas.documentation import DocumentationResult
 from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
@@ -44,7 +45,7 @@ class TopicDetailResponse(BaseModel):
 
 
 def build_available_actions(run: WorkMemoryRun) -> list[str]:
-    if isinstance(run.result, (AnalysisResult, SourceSummaryResult, JiraIssueResult)):
+    if isinstance(run.result, (AnalysisResult, SourceSummaryResult, JiraIssueResult, ConfluencePageResult)):
         return ["refine_analysis", "draft_ticket", "draft_documentation"]
 
     if run.intermediate_analysis is not None:

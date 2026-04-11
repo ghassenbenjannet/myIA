@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
 from app.orchestrator.engine import ProcessEngine
+from app.schemas.confluence_request import ConfluenceReadRequest
+from app.schemas.confluence_response import ConfluenceReadResponse
 from app.schemas.continuation import ContinueRunRequest
 from app.schemas.jira_request import JiraReadRequest
 from app.schemas.jira_response import JiraReadResponse
@@ -12,8 +14,15 @@ from app.schemas.topic import TopicDetailResponse, TopicSummary, build_topic_run
 from app.schemas.work_memory import WorkMemoryRun
 from app.services.jira_read_service import (
     JiraIssueNotFoundError,
+    JiraReadFailedError,
     JiraNotConfiguredError,
     JiraReadService,
+)
+from app.services.confluence_read_service import (
+    ConfluenceNotConfiguredError,
+    ConfluencePageNotFoundError,
+    ConfluenceReadFailedError,
+    ConfluenceReadService,
 )
 from app.services.source_summary_service import SourceSummaryService
 from app.services.topic_repository import topic_repository
@@ -23,6 +32,7 @@ router = APIRouter(tags=["process"])
 engine = ProcessEngine()
 source_summary_service = SourceSummaryService()
 jira_read_service = JiraReadService()
+confluence_read_service = ConfluenceReadService()
 
 
 @router.post("/process", response_model=ProcessResponse)
@@ -93,6 +103,8 @@ def jira_read(request: JiraReadRequest) -> JiraReadResponse:
         raise HTTPException(status_code=503, detail="Jira is not configured") from exc
     except JiraIssueNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Jira issue not found") from exc
+    except JiraReadFailedError as exc:
+        raise HTTPException(status_code=502, detail="Jira issue could not be read") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Jira issue could not be read") from exc
 
@@ -109,3 +121,31 @@ def jira_read(request: JiraReadRequest) -> JiraReadResponse:
     )
     work_memory_repository.assign_topic(run.run_id, topic.topic_id)
     return JiraReadResponse(run_id=run.run_id, topic_id=topic.topic_id, result=result)
+
+
+@router.post("/confluence-read", response_model=ConfluenceReadResponse)
+def confluence_read(request: ConfluenceReadRequest) -> ConfluenceReadResponse:
+    try:
+        result = confluence_read_service.read_page(request)
+    except ConfluenceNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail="Confluence is not configured") from exc
+    except ConfluencePageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Confluence page not found") from exc
+    except ConfluenceReadFailedError as exc:
+        raise HTTPException(status_code=502, detail="Confluence page could not be read") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Confluence page could not be read") from exc
+
+    run = work_memory_repository.create_run(
+        raw_input=request.page_id,
+        target_output="confluence_read",
+        request_type="confluence_read",
+        final_workflow="confluence_read",
+        result=result,
+    )
+    topic = topic_repository.create_topic(
+        run_id=run.run_id,
+        topic_label=topic_repository.build_default_label(raw_input=request.page_id, result=result),
+    )
+    work_memory_repository.assign_topic(run.run_id, topic.topic_id)
+    return ConfluenceReadResponse(run_id=run.run_id, topic_id=topic.topic_id, result=result)
