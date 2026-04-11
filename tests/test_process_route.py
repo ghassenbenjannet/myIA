@@ -57,6 +57,7 @@ def test_process_with_documentation_text_routes_to_documentation() -> None:
         "Questions ouvertes",
         "Prochaines etapes",
     ]
+    assert payload["context_used"] is None
 
 
 def test_process_analysis_response_contains_enriched_analysis_fields() -> None:
@@ -160,6 +161,7 @@ def test_process_with_fuzzy_ticket_request_uses_intermediate_analysis() -> None:
     payload = response.json()
     assert payload["selected_workflow"] == "ticket"
     assert payload["intermediate_analysis"] is not None
+    assert payload["context_used"] is not None
     assert "title" in payload["result"]
     assert "description" in payload["result"]
     assert "Le perimetre exact ou certaines hypotheses restent a confirmer." in payload["result"]["open_points"]
@@ -180,6 +182,7 @@ def test_process_with_clear_ticket_request_skips_intermediate_analysis() -> None
     payload = response.json()
     assert payload["selected_workflow"] == "ticket"
     assert payload["intermediate_analysis"] is None
+    assert payload["context_used"] is None
 
 
 def test_process_analysis_route_keeps_api_contract() -> None:
