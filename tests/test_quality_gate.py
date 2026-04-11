@@ -14,10 +14,16 @@ def test_quality_gate_analysis_checks_expected_fields() -> None:
             request_summary="Summary",
             context_hint=None,
             detected_type="analysis",
+            current_behavior="Le calcul est KO",
+            expected_behavior="Le calcul doit etre correct",
+            business_impacts=["Impact metier"],
+            technical_impacts=["Impact technique"],
+            dependencies=["API paiement"],
             ambiguities=["Ambiguity"],
             risks=["Risk"],
             open_questions=["Question"],
             recommended_next_step="Next step",
+            recommended_output="ticket",
         ),
     )
 
@@ -25,6 +31,12 @@ def test_quality_gate_analysis_checks_expected_fields() -> None:
     assert "analysis_reformulation_present" in result["quality_checks"]
     assert "analysis_ambiguities_present" in result["quality_checks"]
     assert "analysis_open_questions_present" in result["quality_checks"]
+    assert "analysis_recommended_next_step_present" in result["quality_checks"]
+    assert "analysis_recommended_output_present" in result["quality_checks"]
+    assert "analysis_current_behavior_present" in result["quality_checks"]
+    assert "analysis_expected_behavior_present" in result["quality_checks"]
+    assert "analysis_impacts_present" in result["quality_checks"]
+    assert "analysis_dependencies_present" in result["quality_checks"]
 
 
 def test_quality_gate_ticket_checks_expected_fields() -> None:
