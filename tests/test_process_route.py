@@ -64,7 +64,11 @@ def test_workspace_front_returns_200() -> None:
     assert response.status_code == 200
     assert "Shadow PO AI Workspace" in response.text
     assert "Topics" in response.text
+    assert "Dossier Topic" in response.text
     assert "/confluence-read" in response.text
+    assert "Confluence Read" in response.text
+    assert "Selectionner une action" in response.text
+    assert "Le texte saisi ressemble a un compte-rendu technique" in response.text
 
 
 def test_process_with_ambiguous_text_returns_200() -> None:
@@ -553,11 +557,57 @@ def test_get_topic_available_actions_are_coherent_with_run_type() -> None:
         "draft_ticket",
         "draft_documentation",
     ]
-    assert runs_by_id[documentation_response.json()["run_id"]]["available_actions"] == [
-        "refine_analysis",
-        "draft_ticket",
-        "draft_documentation",
-    ]
+    assert runs_by_id[documentation_response.json()["run_id"]]["available_actions"] == []
+
+
+def test_get_topic_available_actions_do_not_expose_unsupported_actions_for_ticket_runs() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Bug paiement en production avec impact utilisateur.",
+            "context_hint": "Incident critique",
+            "target_output": "ticket",
+        },
+    )
+
+    ticket_payload = process_response.json()
+
+    topic_response = client.get(f"/topics/{ticket_payload['topic_id']}")
+
+    assert topic_response.status_code == 200
+    topic_payload = topic_response.json()
+    runs_by_id = {run["run_id"]: run for run in topic_payload["runs"]}
+    assert runs_by_id[ticket_payload["run_id"]]["available_actions"] == []
+
+
+def test_get_topic_available_actions_do_not_expose_unsupported_actions_for_confluence_runs() -> None:
+    original_service = confluence_read_service.read_page
+    confluence_read_service.read_page = FakeConfluenceReadService(
+        result={
+            "page_id": "51",
+            "title": "Mode operatoire support",
+            "space_key": "OPS",
+            "url": "https://confluence.example.com/wiki/spaces/OPS/pages/51",
+            "summary": "Page Confluence lue: Mode operatoire support. Espace: OPS.",
+            "content_preview": "Procedure support.",
+            "key_points": ["Titre: Mode operatoire support."],
+            "open_points": [],
+        }
+    ).read_page
+    try:
+        confluence_response = client.post("/confluence-read", json={"page_id": "51"})
+    finally:
+        confluence_read_service.read_page = original_service
+
+    assert confluence_response.status_code == 200
+    payload = confluence_response.json()
+
+    topic_response = client.get(f"/topics/{payload['topic_id']}")
+
+    assert topic_response.status_code == 200
+    topic_payload = topic_response.json()
+    runs_by_id = {run["run_id"]: run for run in topic_payload["runs"]}
+    assert runs_by_id[payload["run_id"]]["available_actions"] == []
 
 
 def test_get_topic_keeps_backward_compatible_fields() -> None:

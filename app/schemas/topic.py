@@ -45,11 +45,11 @@ class TopicDetailResponse(BaseModel):
 
 
 def build_available_actions(run: WorkMemoryRun) -> list[str]:
-    if isinstance(run.result, (AnalysisResult, SourceSummaryResult, JiraIssueResult, ConfluencePageResult)):
+    if isinstance(run.result, (AnalysisResult, SourceSummaryResult, JiraIssueResult)):
         return ["refine_analysis", "draft_ticket", "draft_documentation"]
 
-    if run.intermediate_analysis is not None:
-        return ["refine_analysis", "draft_ticket", "draft_documentation"]
+    if isinstance(run.result, ConfluencePageResult):
+        return []
 
     if isinstance(run.result, (TicketResult, DocumentationResult)):
         return []

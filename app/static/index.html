@@ -28,7 +28,7 @@
       <section class="panel panel-wide">
         <div class="panel-head">
           <h2>Derniers Runs Utiles</h2>
-          <p>Les derniers `run_id` vus ou generes restent disponibles dans la session locale pour relire un artefact ou preparer une continuation sans ressaisie.</p>
+          <p>Les derniers artefacts de travail vus ou generes restent disponibles dans la session locale pour relire un dossier, reprendre un run ou preparer une continuation sans ressaisie.</p>
         </div>
         <div id="recent-runs" class="recent-runs"></div>
       </section>
@@ -59,13 +59,16 @@
       <section id="process-section" class="panel">
         <div class="panel-head">
           <h2>Process</h2>
-          <p>Entrer une demande metier libre puis laisser le backend choisir ou executer le workflow cible.</p>
+          <p>Entrer une demande metier exploitable. Eviter ici les logs bruts ou les longs dumps techniques : le workspace est optimise pour des besoins, incidents et sujets PO deja reformules.</p>
         </div>
         <form id="process-form" class="form-grid">
           <label>
             <span>User input</span>
             <textarea name="user_input" rows="5" placeholder="Ex: La remise ne se calcule plus pour la commande web..."></textarea>
           </label>
+          <div id="process-warning" class="message info helper-message is-hidden">
+            Le texte saisi ressemble a un compte-rendu technique, un log ou un diff. Le workspace attend plutot une demande metier exploitable et deja reformulee.
+          </div>
           <label>
             <span>Context hint</span>
             <input name="context_hint" type="text" placeholder="Contexte optionnel">
@@ -112,6 +115,7 @@
           <label>
             <span>Action</span>
             <select name="action">
+              <option value="">Selectionner une action</option>
               <option value="refine_analysis">refine_analysis</option>
               <option value="draft_ticket">draft_ticket</option>
               <option value="draft_documentation">draft_documentation</option>
@@ -160,6 +164,21 @@
           <button type="submit">Executer /jira-read</button>
         </form>
         <div id="jira-output" class="output"></div>
+      </section>
+
+      <section id="confluence-section" class="panel">
+        <div class="panel-head">
+          <h2>Confluence Read</h2>
+          <p>Lire une page Confluence par identifiant, conserver un artefact compact, puis la reutiliser dans le dossier topic.</p>
+        </div>
+        <form id="confluence-form" class="form-grid compact">
+          <label>
+            <span>Page ID</span>
+            <input name="page_id" type="text" placeholder="42">
+          </label>
+          <button type="submit">Executer /confluence-read</button>
+        </form>
+        <div id="confluence-output" class="output"></div>
       </section>
     </main>
   </div>
