@@ -1,4 +1,5 @@
 from app.schemas.analysis import AnalysisResult
+from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
 
 
@@ -153,6 +154,43 @@ class AnalysisService:
             recommended_output="analysis",
         )
 
+    def from_jira_issue(self, jira_issue: JiraIssueResult) -> AnalysisResult:
+        issue_text = self._build_jira_text(jira_issue)
+        lowered = self._normalize(issue_text)
+        business_impacts = self._extract_impacts(lowered, self.BUSINESS_KEYWORDS)
+        technical_impacts = self._extract_impacts(lowered, self.TECHNICAL_KEYWORDS)
+        dependencies = self._extract_dependencies(lowered)
+        open_questions = list(jira_issue.open_points)
+        if not open_questions:
+            open_questions.append("Quels points du ticket Jira doivent encore etre confirmes avec le metier ?")
+
+        ambiguities = ["Le comportement attendu n'est pas explicite dans le ticket Jira."]
+        if not jira_issue.description:
+            ambiguities.append("La description Jira reste trop courte pour cadrer completement le sujet.")
+
+        risks = ["Risque de mauvaise interpretation si le ticket Jira ne couvre pas tout le besoin."]
+        if technical_impacts:
+            risks.append("Risque de regression technique si les dependances mentionnees par Jira ne sont pas verifiees.")
+        if business_impacts:
+            risks.append("Risque d'impact metier si le ticket Jira reste incomplet.")
+
+        return AnalysisResult(
+            reformulation=f"Le ticket Jira {jira_issue.issue_key} porte sur {jira_issue.title.lower()} et doit etre analyse avant transformation en livrable.",
+            request_summary=jira_issue.summary,
+            context_hint=f"Ticket Jira lu: {jira_issue.issue_key}",
+            detected_type="analysis",
+            current_behavior=self._extract_jira_current_behavior(jira_issue),
+            expected_behavior=None,
+            business_impacts=business_impacts,
+            technical_impacts=technical_impacts,
+            dependencies=dependencies,
+            ambiguities=ambiguities,
+            risks=risks,
+            open_questions=open_questions,
+            recommended_next_step="Clarifier le besoin attendu puis transformer cette analyse en ticket ou documentation selon le besoin.",
+            recommended_output="analysis",
+        )
+
     def _normalize(self, value: str) -> str:
         replacements = {
             "é": "e",
@@ -220,6 +258,20 @@ class AnalysisService:
         source_label = source_summary.source_title or source_summary.source_ref
         return f"La source {source_label} met en avant un sujet a analyser avant de produire un livrable."
 
+    def _build_jira_text(self, jira_issue: JiraIssueResult) -> str:
+        return " ".join(
+            [
+                jira_issue.title,
+                jira_issue.description or "",
+                jira_issue.summary,
+                jira_issue.status or "",
+                jira_issue.issue_type or "",
+                jira_issue.priority or "",
+                *jira_issue.labels,
+                *jira_issue.open_points,
+            ]
+        ).strip()
+
     def _extract_source_current_behavior(
         self,
         source_summary: SourceSummaryResult,
@@ -227,6 +279,11 @@ class AnalysisService:
         if source_summary.key_points:
             return f"Comportement observe dans la source: {source_summary.key_points[0]}"
         return None
+
+    def _extract_jira_current_behavior(self, jira_issue: JiraIssueResult) -> str | None:
+        if jira_issue.description:
+            return f"Comportement observe dans Jira: {jira_issue.description}"
+        return f"Comportement observe dans Jira: {jira_issue.title}"
 
     def _build_request_summary(
         self,

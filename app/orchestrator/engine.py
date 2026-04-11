@@ -7,6 +7,7 @@ from app.modules.ticket.service import TicketService
 from app.orchestrator.router import WorkflowRouter
 from app.quality.gate import QualityGate
 from app.schemas.analysis import AnalysisResult
+from app.schemas.jira_result import JiraIssueResult
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.schemas.source_summary import SourceSummaryResult
@@ -178,6 +179,9 @@ class ProcessEngine:
         if isinstance(source_run.result, SourceSummaryResult):
             return self._build_source_summary_continuation_result(source_run.result, action)
 
+        if isinstance(source_run.result, JiraIssueResult):
+            return self._build_jira_continuation_result(source_run.result, action)
+
         if action == "draft_ticket":
             if analysis_source is None:
                 raise HTTPException(status_code=400, detail="No analysis available for draft_ticket")
@@ -245,6 +249,42 @@ class ProcessEngine:
 
         if action == "draft_ticket":
             derived_analysis = self.analysis_service.from_source_summary(source_summary)
+            return (
+                self.ticket_service.from_analysis(derived_analysis),
+                "ticket",
+                derived_analysis.detected_type,
+                "ticket",
+                derived_analysis,
+            )
+
+        raise HTTPException(status_code=400, detail="Unsupported continuation action")
+
+    def _build_jira_continuation_result(
+        self,
+        jira_issue: JiraIssueResult,
+        action: str,
+    ):
+        if action == "draft_documentation":
+            return (
+                self.documentation_service.from_jira_issue(jira_issue),
+                "documentation",
+                "jira_read",
+                "documentation",
+                None,
+            )
+
+        if action == "refine_analysis":
+            derived_analysis = self.analysis_service.from_jira_issue(jira_issue)
+            return (
+                derived_analysis,
+                "analysis",
+                derived_analysis.detected_type,
+                "analysis",
+                None,
+            )
+
+        if action == "draft_ticket":
+            derived_analysis = self.analysis_service.from_jira_issue(jira_issue)
             return (
                 self.ticket_service.from_analysis(derived_analysis),
                 "ticket",
