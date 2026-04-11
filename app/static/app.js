@@ -78,13 +78,13 @@ function submitForm(formId) {
 
 function relireRun(runId) {
   setLookupRunId(runId);
-  scrollToSection("run-section");
+  scrollToSection("lookup-section");
   submitForm("run-form");
 }
 
 function prepareContinuation(runId) {
   setContinuationRunId(runId);
-  scrollToSection("continue-section");
+  scrollToSection("actions-section");
   getField("continue-form", "action")?.focus();
 }
 
@@ -588,6 +588,7 @@ function removeRecentRun(runId) {
   const filtered = getRecentRuns().filter((item) => item.run_id !== runId);
   saveRecentRuns(filtered);
   renderRecentRuns();
+  renderDashboard();
 }
 
 function rememberRun(entry) {
@@ -600,12 +601,14 @@ function rememberRun(entry) {
     workflow: entry.workflow || null,
     request_type: entry.request_type || null,
     parent_run_id: entry.parent_run_id || null,
+    available_actions: entry.available_actions || [],
     source: entry.source || null,
     timestamp: new Date().toISOString(),
   });
   saveRecentRuns(current.slice(0, MAX_RECENT_RUNS));
   applyLatestRun(entry.run_id);
   renderRecentRuns();
+  renderDashboard();
   loadTopics();
 }
 
@@ -653,7 +656,24 @@ function buildRecentRunSubtitle(item) {
   if (item.parent_run_id) {
     parts.push(`Parent ${item.parent_run_id}`);
   }
-  return parts.join(" · ");
+  return parts.join(" | ");
+}
+
+function renderDashboard() {
+  const recentRuns = getRecentRuns();
+  const recentRunCount = document.getElementById("recent-run-count");
+  const topicCount = document.getElementById("topic-count");
+  const workspaceFocus = document.getElementById("workspace-focus");
+
+  if (recentRunCount) {
+    recentRunCount.textContent = String(recentRuns.length);
+  }
+  if (topicCount) {
+    topicCount.textContent = String(Array.isArray(window.__shadowTopics) ? window.__shadowTopics.length : 0);
+  }
+  if (workspaceFocus) {
+    workspaceFocus.textContent = recentRuns[0] ? formatWorkflowLabel(recentRuns[0].workflow) : "Aucun";
+  }
 }
 
 function renderRecentRuns() {
@@ -757,6 +777,8 @@ async function loadTopics() {
   container.innerHTML = `<div class="message ok inline-status">Chargement des topics...</div>`;
   try {
     const topics = await apiRequest("/topics");
+    window.__shadowTopics = topics;
+    renderDashboard();
     if (!topics.length) {
       topicsListState = "empty";
       container.innerHTML = "";
@@ -777,6 +799,8 @@ async function loadTopics() {
     }
   } catch (error) {
     topicsListState = "error";
+    window.__shadowTopics = [];
+    renderDashboard();
     container.innerHTML = `<div class="message error">${escapeHtml(error.message || "Erreur reseau")}</div>`;
     if (selectedTopicState !== "loaded") {
       selectedTopicState = "error";
@@ -1085,5 +1109,6 @@ getField("process-form", "user_input")?.addEventListener("input", (event) => {
 
 renderTopicDetailPanel("unselected");
 renderRecentRuns();
+renderDashboard();
 loadTopics();
 validateLatestRunPrefill();
