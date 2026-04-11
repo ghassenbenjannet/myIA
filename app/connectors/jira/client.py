@@ -1,0 +1,2 @@
+class JiraClient:
+    pass
