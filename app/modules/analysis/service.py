@@ -1,4 +1,5 @@
 from app.schemas.analysis import AnalysisResult
+from app.schemas.source_summary import SourceSummaryResult
 
 
 class AnalysisService:
@@ -117,6 +118,41 @@ class AnalysisService:
             recommended_output=recommended_output,
         )
 
+    def from_source_summary(self, source_summary: SourceSummaryResult) -> AnalysisResult:
+        source_text = self._build_source_text(source_summary)
+        lowered = self._normalize(source_text)
+        business_impacts = self._extract_impacts(lowered, self.BUSINESS_KEYWORDS)
+        technical_impacts = self._extract_impacts(lowered, self.TECHNICAL_KEYWORDS)
+        dependencies = self._extract_dependencies(lowered)
+        open_questions = list(source_summary.open_questions)
+        if not open_questions:
+            open_questions.append("Quels elements de la source doivent etre confirmes avec le metier ?")
+
+        risks = ["Risque de mauvaise interpretation si la source ne couvre pas tout le perimetre."]
+        if technical_impacts:
+            risks.append("Risque de regression technique si les dependances issues de la source ne sont pas verifiees.")
+        if business_impacts:
+            risks.append("Risque d'impact metier si la source est incomplete ou datee.")
+
+        return AnalysisResult(
+            reformulation=self._build_source_reformulation(source_summary),
+            request_summary=source_summary.summary,
+            context_hint=f"Source initiale: {source_summary.source_ref}",
+            detected_type="analysis",
+            current_behavior=self._extract_source_current_behavior(source_summary),
+            expected_behavior=None,
+            business_impacts=business_impacts,
+            technical_impacts=technical_impacts,
+            dependencies=dependencies,
+            ambiguities=[
+                "Le comportement attendu n'est pas formule clairement dans la source.",
+            ],
+            risks=risks,
+            open_questions=open_questions,
+            recommended_next_step=source_summary.next_step_hint,
+            recommended_output="analysis",
+        )
+
     def _normalize(self, value: str) -> str:
         replacements = {
             "é": "e",
@@ -169,6 +205,28 @@ class AnalysisService:
             subject = subject[:87].rstrip() + "..."
 
         return subject.lower()
+
+    def _build_source_text(self, source_summary: SourceSummaryResult) -> str:
+        return " ".join(
+            [
+                source_summary.source_title or "",
+                source_summary.summary,
+                *source_summary.key_points,
+                *source_summary.open_questions,
+            ]
+        ).strip()
+
+    def _build_source_reformulation(self, source_summary: SourceSummaryResult) -> str:
+        source_label = source_summary.source_title or source_summary.source_ref
+        return f"La source {source_label} met en avant un sujet a analyser avant de produire un livrable."
+
+    def _extract_source_current_behavior(
+        self,
+        source_summary: SourceSummaryResult,
+    ) -> str | None:
+        if source_summary.key_points:
+            return f"Comportement observe dans la source: {source_summary.key_points[0]}"
+        return None
 
     def _build_request_summary(
         self,

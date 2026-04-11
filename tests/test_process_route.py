@@ -387,3 +387,112 @@ def test_source_summary_invalid_request_returns_422() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_continue_source_summary_to_documentation_creates_child_run() -> None:
+    original_reader = source_summary_service.source_reader
+    source_summary_service.source_reader = FakeSourceReader()
+    try:
+        source_response = client.post(
+            "/source-summary",
+            json={
+                "source_type": "url",
+                "source_ref": "https://example.com/article",
+            },
+        )
+    finally:
+        source_summary_service.source_reader = original_reader
+
+    parent_run_id = source_response.json()["run_id"]
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "draft_documentation"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["run_id"] != parent_run_id
+    assert payload["selected_workflow"] == "documentation"
+    assert [section["title"] for section in payload["result"]["sections"]] == [
+        "Contexte",
+        "Objectif",
+        "Points cles",
+        "Questions ouvertes",
+        "Prochaines etapes",
+    ]
+
+    child_run_response = client.get(f"/runs/{payload['run_id']}")
+    child_run_payload = child_run_response.json()
+    assert child_run_payload["parent_run_id"] == parent_run_id
+    assert child_run_payload["continuation_action"] == "draft_documentation"
+
+
+def test_continue_source_summary_to_analysis_creates_child_run() -> None:
+    original_reader = source_summary_service.source_reader
+    source_summary_service.source_reader = FakeSourceReader(
+        payload={
+            "url": "https://example.com/article",
+            "title": "Remise web",
+            "text": "La remise ne se calcule plus pour certaines commandes web via API.",
+        }
+    )
+    try:
+        source_response = client.post(
+            "/source-summary",
+            json={
+                "source_type": "url",
+                "source_ref": "https://example.com/article",
+            },
+        )
+    finally:
+        source_summary_service.source_reader = original_reader
+
+    parent_run_id = source_response.json()["run_id"]
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "refine_analysis"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["selected_workflow"] == "analysis"
+    assert payload["result"]["request_summary"]
+    assert "source" in payload["result"]["context_hint"].lower()
+
+
+def test_continue_source_summary_to_ticket_uses_derived_analysis() -> None:
+    original_reader = source_summary_service.source_reader
+    source_summary_service.source_reader = FakeSourceReader(
+        payload={
+            "url": "https://example.com/article",
+            "title": "Paiement web",
+            "text": "Le paiement ne fonctionne plus pour certains utilisateurs sur la commande web.",
+        }
+    )
+    try:
+        source_response = client.post(
+            "/source-summary",
+            json={
+                "source_type": "url",
+                "source_ref": "https://example.com/article",
+            },
+        )
+    finally:
+        source_summary_service.source_reader = original_reader
+
+    parent_run_id = source_response.json()["run_id"]
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "draft_ticket"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["selected_workflow"] == "ticket"
+    assert payload["intermediate_analysis"] is not None
+    assert payload["result"]["title"]
+
+    child_run_response = client.get(f"/runs/{payload['run_id']}")
+    child_run_payload = child_run_response.json()
+    assert child_run_payload["parent_run_id"] == parent_run_id
+    assert child_run_payload["continuation_action"] == "draft_ticket"

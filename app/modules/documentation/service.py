@@ -1,5 +1,6 @@
-from app.schemas.documentation import DocumentationResult
 from app.schemas.analysis import AnalysisResult
+from app.schemas.documentation import DocumentationResult
+from app.schemas.source_summary import SourceSummaryResult
 
 
 class DocumentationService:
@@ -84,6 +85,37 @@ class DocumentationService:
                 },
             ],
             detected_type=analysis.detected_type,
+        )
+
+    def from_source_summary(self, source_summary: SourceSummaryResult) -> DocumentationResult:
+        return DocumentationResult(
+            document_type="working_draft",
+            title=self._build_title(source_summary.source_title or source_summary.source_ref),
+            summary="Document de travail derive d'un resume de source.",
+            context=f"Source initiale: {source_summary.source_ref}",
+            sections=[
+                {
+                    "title": "Contexte",
+                    "content": source_summary.source_title or source_summary.source_ref,
+                },
+                {
+                    "title": "Objectif",
+                    "content": source_summary.summary,
+                },
+                {
+                    "title": "Points cles",
+                    "content": source_summary.key_points or [source_summary.summary],
+                },
+                {
+                    "title": "Questions ouvertes",
+                    "content": source_summary.open_questions or ["Quels points de la source doivent encore etre confirmes ?"],
+                },
+                {
+                    "title": "Prochaines etapes",
+                    "content": [source_summary.next_step_hint],
+                },
+            ],
+            detected_type="source_summary",
         )
 
     def _build_title(self, user_input: str) -> str:

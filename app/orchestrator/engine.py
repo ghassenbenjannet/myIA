@@ -9,6 +9,7 @@ from app.quality.gate import QualityGate
 from app.schemas.analysis import AnalysisResult
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
+from app.schemas.source_summary import SourceSummaryResult
 from app.schemas.work_memory import WorkMemoryRun
 from app.services.context_provider import ReadOnlyContextProvider
 from app.services.context_selection import ContextSelectionPolicy
@@ -174,6 +175,9 @@ class ProcessEngine:
         action: str,
         analysis_source: AnalysisResult | None,
     ):
+        if isinstance(source_run.result, SourceSummaryResult):
+            return self._build_source_summary_continuation_result(source_run.result, action)
+
         if action == "draft_ticket":
             if analysis_source is None:
                 raise HTTPException(status_code=400, detail="No analysis available for draft_ticket")
@@ -211,6 +215,42 @@ class ProcessEngine:
                 analysis_source.detected_type,
                 "analysis",
                 None,
+            )
+
+        raise HTTPException(status_code=400, detail="Unsupported continuation action")
+
+    def _build_source_summary_continuation_result(
+        self,
+        source_summary: SourceSummaryResult,
+        action: str,
+    ):
+        if action == "draft_documentation":
+            return (
+                self.documentation_service.from_source_summary(source_summary),
+                "documentation",
+                "source_summary",
+                "documentation",
+                None,
+            )
+
+        if action == "refine_analysis":
+            derived_analysis = self.analysis_service.from_source_summary(source_summary)
+            return (
+                derived_analysis,
+                "analysis",
+                derived_analysis.detected_type,
+                "analysis",
+                None,
+            )
+
+        if action == "draft_ticket":
+            derived_analysis = self.analysis_service.from_source_summary(source_summary)
+            return (
+                self.ticket_service.from_analysis(derived_analysis),
+                "ticket",
+                derived_analysis.detected_type,
+                "ticket",
+                derived_analysis,
             )
 
         raise HTTPException(status_code=400, detail="Unsupported continuation action")
