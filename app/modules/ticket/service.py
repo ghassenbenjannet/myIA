@@ -1,3 +1,4 @@
+from app.schemas.analysis import AnalysisResult
 from app.schemas.ticket import TicketResult
 
 
@@ -111,6 +112,33 @@ class TicketService:
             ),
         )
 
+    def from_analysis(self, analysis: AnalysisResult) -> TicketResult:
+        ticket_type = self._map_analysis_output_to_ticket_type(analysis.recommended_output)
+        title = self._build_title_from_analysis(analysis)
+        description = self._build_description_from_analysis(analysis)
+        context = self._build_context_from_analysis(analysis)
+        business_goal = self._build_business_goal_from_analysis(analysis)
+        open_points = self._build_open_points_from_analysis(analysis)
+        acceptance_criteria = self._build_acceptance_criteria_from_analysis(
+            analysis=analysis,
+            open_points=open_points,
+        )
+
+        return TicketResult(
+            ticket_type=ticket_type,
+            title=title,
+            description=description,
+            context=context,
+            current_behavior=analysis.current_behavior,
+            expected_behavior=analysis.expected_behavior,
+            business_goal=business_goal,
+            business_impacts=list(analysis.business_impacts),
+            technical_impacts=list(analysis.technical_impacts),
+            dependencies=list(analysis.dependencies),
+            open_points=open_points,
+            acceptance_criteria=acceptance_criteria,
+        )
+
     def _normalize(self, value: str) -> str:
         replacements = {
             "é": "e",
@@ -202,6 +230,22 @@ class TicketService:
 
         return title
 
+    def _build_title_from_analysis(self, analysis: AnalysisResult) -> str:
+        prefix = "[RECETTE]" if analysis.recommended_output == "recipe" else "[TICKET]"
+        base_title = analysis.expected_behavior or analysis.reformulation or analysis.request_summary
+
+        if base_title.startswith("Le comportement attendu semble etre exprime dans la demande: "):
+            base_title = base_title.removeprefix("Le comportement attendu semble etre exprime dans la demande: ").strip()
+        elif base_title.startswith("Sujet analyse de type "):
+            parts = base_title.split("Demande initiale:", maxsplit=1)
+            if len(parts) == 2:
+                base_title = parts[1].strip()
+
+        if len(base_title) > 80:
+            base_title = base_title[:77] + "..."
+
+        return f"{prefix} {base_title}"
+
     def _build_description(
         self,
         user_input: str,
@@ -240,6 +284,13 @@ class TicketService:
             context_parts.append(f"Contexte fourni: {context_hint}")
         else:
             context_parts.append("Aucun contexte complementaire n'a ete fourni.")
+        return " ".join(context_parts)
+
+    def _build_context_from_analysis(self, analysis: AnalysisResult) -> str:
+        context_parts = [f"Ticket derive d'une analyse de type {analysis.detected_type}."]
+        if analysis.context_hint:
+            context_parts.append(f"Contexte d'analyse: {analysis.context_hint}")
+        context_parts.append(f"Suite recommandee: {analysis.recommended_next_step}")
         return " ".join(context_parts)
 
     def _extract_current_behavior(
@@ -284,12 +335,36 @@ class TicketService:
             return "Clarifier le besoin et preparer un ticket actionnable sur le perimetre impacte."
         return "Structurer le sujet et lever les points ouverts avant execution."
 
+    def _build_business_goal_from_analysis(self, analysis: AnalysisResult) -> str:
+        if analysis.expected_behavior is not None:
+            return "Traduire le comportement attendu identifie dans l'analyse en action produit exploitable."
+        if analysis.business_impacts:
+            return f"Traiter le sujet pour limiter l'impact metier suivant: {analysis.business_impacts[0]}"
+        return analysis.recommended_next_step
+
     def _extract_messages(self, lowered: str, mapping: dict[str, str]) -> list[str]:
         messages: list[str] = []
         for keyword, message in mapping.items():
             if keyword in lowered and message not in messages:
                 messages.append(message)
         return messages
+
+    def _build_description_from_analysis(self, analysis: AnalysisResult) -> str:
+        parts = [analysis.request_summary]
+
+        if analysis.current_behavior is not None:
+            parts.append(f"Comportement actuel: {analysis.current_behavior}")
+
+        if analysis.expected_behavior is not None:
+            parts.append(f"Comportement attendu: {analysis.expected_behavior}")
+
+        if analysis.business_impacts:
+            parts.append(f"Impacts metier: {' '.join(analysis.business_impacts)}")
+
+        if analysis.technical_impacts:
+            parts.append(f"Impacts techniques: {' '.join(analysis.technical_impacts)}")
+
+        return " ".join(parts)
 
     def _build_open_points(
         self,
@@ -318,6 +393,18 @@ class TicketService:
 
         if self._mentions_production(lowered):
             open_points.append("Confirmer la reproductibilite et l'ampleur du sujet en production.")
+
+        return open_points
+
+    def _build_open_points_from_analysis(self, analysis: AnalysisResult) -> list[str]:
+        open_points: list[str] = []
+
+        for item in analysis.ambiguities + analysis.open_questions:
+            if item not in open_points:
+                open_points.append(item)
+
+        if not open_points:
+            open_points.append("Verifier qu'aucun point bloquant ne reste avant execution.")
 
         return open_points
 
@@ -358,3 +445,30 @@ class TicketService:
             criteria.append("Les points ouverts bloquants ont ete clarifies avant demarrage.")
 
         return criteria
+
+    def _build_acceptance_criteria_from_analysis(
+        self,
+        analysis: AnalysisResult,
+        open_points: list[str],
+    ) -> list[str]:
+        criteria = [
+            "Le sujet issu de l'analyse est reformule de maniere claire et exploitable.",
+        ]
+
+        if analysis.expected_behavior is not None:
+            criteria.append("Le comportement attendu identifie dans l'analyse est couvert de facon testable.")
+        else:
+            criteria.append("Le comportement attendu est clarifie avant demarrage.")
+
+        if analysis.dependencies:
+            criteria.append("Les dependances identifiees dans l'analyse ont ete verifiees.")
+
+        if open_points:
+            criteria.append("Les ambiguities et questions ouvertes issues de l'analyse ont ete traitees avant execution.")
+
+        return criteria
+
+    def _map_analysis_output_to_ticket_type(self, recommended_output: str) -> str:
+        if recommended_output == "recipe":
+            return "test"
+        return "story"
