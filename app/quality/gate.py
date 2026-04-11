@@ -1,3 +1,12 @@
+from pydantic import BaseModel
+
+from app.schemas.analysis import AnalysisResult
+from app.schemas.documentation import DocumentationResult
+from app.schemas.ticket import TicketResult
+
+QualityResult = AnalysisResult | TicketResult | DocumentationResult | dict
+
+
 class QualityGate:
     """
     Minimal quality gate for the MVP.
@@ -7,11 +16,12 @@ class QualityGate:
     for confidence scoring or human validation.
     """
 
-    def evaluate(self, workflow: str, result: dict) -> dict[str, list[str]]:
+    def evaluate(self, workflow: str, result: QualityResult) -> dict[str, list[str]]:
         quality_checks: list[str] = []
         warnings: list[str] = []
+        payload = self._to_dict(result)
 
-        if result:
+        if payload:
             quality_checks.append("result_not_empty")
         else:
             warnings.append("empty_result")
@@ -21,16 +31,21 @@ class QualityGate:
             }
 
         if workflow == "analysis":
-            self._check_analysis(result, quality_checks, warnings)
+            self._check_analysis(payload, quality_checks, warnings)
         elif workflow == "ticket":
-            self._check_ticket(result, quality_checks, warnings)
+            self._check_ticket(payload, quality_checks, warnings)
         elif workflow == "documentation":
-            self._check_documentation(result, quality_checks, warnings)
+            self._check_documentation(payload, quality_checks, warnings)
 
         return {
             "quality_checks": quality_checks,
             "warnings": warnings,
         }
+
+    def _to_dict(self, result: QualityResult) -> dict:
+        if isinstance(result, BaseModel):
+            return result.model_dump()
+        return result
 
     def _check_analysis(
         self,
