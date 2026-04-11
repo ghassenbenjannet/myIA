@@ -1,0 +1,256 @@
+:root {
+  --bg: #f3efe6;
+  --panel: #fffdf8;
+  --panel-border: #d8cfbe;
+  --ink: #1f1a16;
+  --muted: #665d52;
+  --accent: #8f3d2e;
+  --accent-soft: #efe0d8;
+  --ok: #215b47;
+  --error: #8b2f2f;
+  --shadow: 0 16px 40px rgba(58, 39, 24, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  background:
+    radial-gradient(circle at top left, rgba(143, 61, 46, 0.10), transparent 28%),
+    linear-gradient(180deg, #f7f3eb 0%, var(--bg) 100%);
+  color: var(--ink);
+}
+
+.shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.hero h1 {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 4vw, 3.8rem);
+  line-height: 0.95;
+}
+
+.hero-copy {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.hero-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  background: rgba(255, 253, 248, 0.78);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.hero-chip {
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.92rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 22px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.panel-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.4rem;
+}
+
+.panel-head p {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.form-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+label span {
+  color: var(--muted);
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  justify-self: start;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff8f5;
+  cursor: pointer;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+button:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.output {
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.message {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid;
+}
+
+.message.error {
+  color: var(--error);
+  background: #fff2f2;
+  border-color: #e7c1c1;
+}
+
+.message.ok {
+  color: var(--ok);
+  background: #eef8f3;
+  border-color: #bad9cb;
+}
+
+.artifact-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 16px;
+  background: #fff;
+}
+
+.artifact-card h3,
+.artifact-card h4 {
+  margin: 0 0 10px;
+}
+
+.meta-grid,
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.kv-item {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #faf5ee;
+}
+
+.kv-item strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.list-block,
+.text-block {
+  margin-top: 12px;
+}
+
+.list-block ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.raw details {
+  margin-top: 8px;
+}
+
+pre {
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 14px;
+  background: #201a17;
+  color: #f6ede4;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 980px) {
+  .hero,
+  .workspace,
+  .form-grid.compact,
+  .meta-grid,
+  .kv-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-panel {
+    justify-content: flex-start;
+  }
+}
