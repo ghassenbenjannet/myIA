@@ -8,6 +8,7 @@ from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.services.context_provider import ReadOnlyContextProvider
 from app.services.context_selection import ContextSelectionPolicy
+from app.services.work_memory_repository import work_memory_repository
 
 
 class ProcessEngine:
@@ -31,6 +32,7 @@ class ProcessEngine:
         self.quality_gate = QualityGate()
         self.context_provider = ReadOnlyContextProvider()
         self.context_selection_policy = ContextSelectionPolicy()
+        self.work_memory_repository = work_memory_repository
 
     def process(self, request: ProcessRequest) -> ProcessResponse:
         classification = self.classifier.classify(
@@ -99,7 +101,18 @@ class ProcessEngine:
             result=result,
         )
 
+        run = self.work_memory_repository.create_run(
+            raw_input=request.user_input,
+            target_output=request.target_output,
+            request_type=classification["request_type"],
+            final_workflow=workflow,
+            result=result,
+            intermediate_analysis=intermediate_analysis,
+            context_used=context_used,
+        )
+
         return ProcessResponse(
+            run_id=run.run_id,
             request_type=classification["request_type"],
             selected_workflow=workflow,
             confidence=classification["confidence"],
