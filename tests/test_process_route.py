@@ -236,6 +236,7 @@ def test_process_analysis_route_keeps_api_contract() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert "run_id" in payload
+    assert "topic_id" in payload
     assert "request_type" in payload
     assert "selected_workflow" in payload
     assert "confidence" in payload
@@ -259,16 +260,43 @@ def test_process_persists_run_and_allows_readback() -> None:
     assert process_response.status_code == 200
     process_payload = process_response.json()
     run_id = process_payload["run_id"]
+    topic_id = process_payload["topic_id"]
 
     run_response = client.get(f"/runs/{run_id}")
 
     assert run_response.status_code == 200
     run_payload = run_response.json()
     assert run_payload["run_id"] == run_id
+    assert run_payload["topic_id"] == topic_id
     assert run_payload["raw_input"] == "Sujet a clarifier sur la facturation, le comportement attendu est a confirmer."
     assert run_payload["final_workflow"] == "ticket"
     assert run_payload["result"] == process_payload["result"]
     assert run_payload["intermediate_analysis"] == process_payload["intermediate_analysis"]
+
+
+def test_process_creates_topic_and_topic_endpoint_returns_linked_run() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "Besoin metier a analyser sur la facturation web.",
+            "target_output": "analysis",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["topic_id"]
+
+    topic_response = client.get(f"/topics/{payload['topic_id']}")
+
+    assert topic_response.status_code == 200
+    topic_payload = topic_response.json()
+    assert topic_payload["topic"]["topic_id"] == payload["topic_id"]
+    assert topic_payload["topic"]["root_run_id"] == payload["run_id"]
+    assert topic_payload["topic"]["latest_run_id"] == payload["run_id"]
+    assert payload["run_id"] in topic_payload["topic"]["run_ids"]
+    assert len(topic_payload["runs"]) == 1
+    assert topic_payload["runs"][0]["run_id"] == payload["run_id"]
 
 
 def test_continue_run_from_analysis_to_ticket_creates_child_run() -> None:
@@ -279,7 +307,8 @@ def test_continue_run_from_analysis_to_ticket_creates_child_run() -> None:
             "target_output": "analysis",
         },
     )
-    parent_run_id = process_response.json()["run_id"]
+    parent_payload = process_response.json()
+    parent_run_id = parent_payload["run_id"]
 
     continue_response = client.post(
         f"/runs/{parent_run_id}/continue",
@@ -289,6 +318,7 @@ def test_continue_run_from_analysis_to_ticket_creates_child_run() -> None:
     assert continue_response.status_code == 200
     child_payload = continue_response.json()
     assert child_payload["run_id"] != parent_run_id
+    assert child_payload["topic_id"] == parent_payload["topic_id"]
     assert child_payload["selected_workflow"] == "ticket"
     assert "title" in child_payload["result"]
 
@@ -326,11 +356,48 @@ def test_continue_run_from_analysis_to_documentation_creates_child_run() -> None
     ]
 
 
+def test_continuation_keeps_parent_topic_and_updates_topic_latest_run() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Le paiement web doit etre analyse avant creation du ticket.",
+            "target_output": "analysis",
+        },
+    )
+
+    assert process_response.status_code == 200
+    parent_payload = process_response.json()
+
+    continue_response = client.post(
+        f"/runs/{parent_payload['run_id']}/continue",
+        json={"action": "draft_documentation"},
+    )
+
+    assert continue_response.status_code == 200
+    child_payload = continue_response.json()
+    assert child_payload["topic_id"] == parent_payload["topic_id"]
+
+    topic_response = client.get(f"/topics/{parent_payload['topic_id']}")
+
+    assert topic_response.status_code == 200
+    topic_payload = topic_response.json()
+    assert topic_payload["topic"]["root_run_id"] == parent_payload["run_id"]
+    assert topic_payload["topic"]["latest_run_id"] == child_payload["run_id"]
+    assert topic_payload["topic"]["run_ids"] == [parent_payload["run_id"], child_payload["run_id"]]
+
+
 def test_get_unknown_run_returns_404() -> None:
     response = client.get("/runs/unknown-run-id")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Run not found"
+
+
+def test_get_unknown_topic_returns_404() -> None:
+    response = client.get("/topics/unknown-topic-id")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Topic not found"
 
 
 def test_continue_unknown_run_returns_404() -> None:
@@ -373,12 +440,18 @@ def test_source_summary_creates_run_and_returns_summary() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert "run_id" in payload
+    assert "topic_id" in payload
     assert payload["result"]["summary"]
     assert payload["result"]["key_points"]
 
     run_response = client.get(f"/runs/{payload['run_id']}")
     assert run_response.status_code == 200
+    assert run_response.json()["topic_id"] == payload["topic_id"]
     assert run_response.json()["result"]["source_ref"] == "https://example.com/article"
+
+    topic_response = client.get(f"/topics/{payload['topic_id']}")
+    assert topic_response.status_code == 200
+    assert topic_response.json()["topic"]["root_run_id"] == payload["run_id"]
 
 
 def test_source_summary_reader_error_returns_502_without_crash() -> None:
@@ -439,12 +512,18 @@ def test_jira_read_creates_run_and_returns_structured_issue() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert "run_id" in payload
+    assert "topic_id" in payload
     assert payload["result"]["issue_key"] == "PO-123"
     assert payload["result"]["title"] == "Remise incorrecte sur commande web"
 
     run_response = client.get(f"/runs/{payload['run_id']}")
     assert run_response.status_code == 200
+    assert run_response.json()["topic_id"] == payload["topic_id"]
     assert run_response.json()["result"]["issue_key"] == "PO-123"
+
+    topic_response = client.get(f"/topics/{payload['topic_id']}")
+    assert topic_response.status_code == 200
+    assert topic_response.json()["topic"]["root_run_id"] == payload["run_id"]
 
 
 def test_jira_read_unknown_issue_returns_404() -> None:
@@ -519,7 +598,8 @@ def test_continue_source_summary_to_documentation_creates_child_run() -> None:
     finally:
         source_summary_service.source_reader = original_reader
 
-    parent_run_id = source_response.json()["run_id"]
+    parent_payload = source_response.json()
+    parent_run_id = parent_payload["run_id"]
     continue_response = client.post(
         f"/runs/{parent_run_id}/continue",
         json={"action": "draft_documentation"},
@@ -528,6 +608,7 @@ def test_continue_source_summary_to_documentation_creates_child_run() -> None:
     assert continue_response.status_code == 200
     payload = continue_response.json()
     assert payload["run_id"] != parent_run_id
+    assert payload["topic_id"] == parent_payload["topic_id"]
     assert payload["selected_workflow"] == "documentation"
     assert [section["title"] for section in payload["result"]["sections"]] == [
         "Contexte",
@@ -596,7 +677,8 @@ def test_continue_source_summary_to_ticket_uses_derived_analysis() -> None:
     finally:
         source_summary_service.source_reader = original_reader
 
-    parent_run_id = source_response.json()["run_id"]
+    parent_payload = source_response.json()
+    parent_run_id = parent_payload["run_id"]
     continue_response = client.post(
         f"/runs/{parent_run_id}/continue",
         json={"action": "draft_ticket"},
@@ -604,6 +686,7 @@ def test_continue_source_summary_to_ticket_uses_derived_analysis() -> None:
 
     assert continue_response.status_code == 200
     payload = continue_response.json()
+    assert payload["topic_id"] == parent_payload["topic_id"]
     assert payload["selected_workflow"] == "ticket"
     assert payload["intermediate_analysis"] is not None
     assert payload["result"]["title"]
@@ -636,7 +719,8 @@ def test_continue_jira_run_to_documentation_creates_child_run() -> None:
     finally:
         jira_read_service.read_issue = original_service
 
-    parent_run_id = jira_response.json()["run_id"]
+    parent_payload = jira_response.json()
+    parent_run_id = parent_payload["run_id"]
     continue_response = client.post(
         f"/runs/{parent_run_id}/continue",
         json={"action": "draft_documentation"},
@@ -644,6 +728,7 @@ def test_continue_jira_run_to_documentation_creates_child_run() -> None:
 
     assert continue_response.status_code == 200
     payload = continue_response.json()
+    assert payload["topic_id"] == parent_payload["topic_id"]
     assert payload["selected_workflow"] == "documentation"
     assert payload["run_id"] != parent_run_id
 
@@ -710,7 +795,8 @@ def test_continue_jira_run_to_ticket_uses_derived_analysis() -> None:
     finally:
         jira_read_service.read_issue = original_service
 
-    parent_run_id = jira_response.json()["run_id"]
+    parent_payload = jira_response.json()
+    parent_run_id = parent_payload["run_id"]
     continue_response = client.post(
         f"/runs/{parent_run_id}/continue",
         json={"action": "draft_ticket"},
@@ -718,6 +804,7 @@ def test_continue_jira_run_to_ticket_uses_derived_analysis() -> None:
 
     assert continue_response.status_code == 200
     payload = continue_response.json()
+    assert payload["topic_id"] == parent_payload["topic_id"]
     assert payload["selected_workflow"] == "ticket"
     assert payload["intermediate_analysis"] is not None
     assert payload["result"]["title"]

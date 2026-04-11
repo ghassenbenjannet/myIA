@@ -10,6 +10,7 @@ ProcessResult = AnalysisResult | TicketResult | DocumentationResult
 
 class ProcessResponse(BaseModel):
     run_id: str = Field(..., description="Identifier of the stored work memory run.")
+    topic_id: str = Field(..., description="Identifier of the parent work topic.")
     request_type: str = Field(..., description="Detected request type.")
     selected_workflow: str = Field(..., description="Workflow selected by the router.")
     confidence: float = Field(..., ge=0.0, le=1.0)
