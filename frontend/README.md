@@ -35,7 +35,8 @@ URLs de dev :
 
 - frontend React/Vite : `http://localhost:5173`
 - backend FastAPI : `http://localhost:8000`
-- front statique FastAPI temporaire : `http://localhost:8000/`
+- entree backend redirigee vers le front React : `http://localhost:8000/`
+- fallback statique FastAPI temporaire : `http://localhost:8000/legacy-workspace`
 
 Dans Docker, Vite :
 

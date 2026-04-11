@@ -415,6 +415,9 @@ URLs disponibles :
 
 - backend FastAPI : `http://localhost:8000`
 - frontend React/Vite : `http://localhost:5173`
-- front statique FastAPI temporaire : `http://localhost:8000/`
+- entree backend redirigee vers le front React : `http://localhost:8000/`
+- front statique FastAPI temporaire : `http://localhost:8000/legacy-workspace`
 
 Le backend reste servi par le service `app`. Le nouveau frontend React vit dans `frontend/`, tourne dans son propre conteneur Vite, et proxy les appels API vers le backend sans changer les contrats existants.
+
+En developpement Docker, `GET /` sur FastAPI redirige vers le frontend React pour eviter le doublon confus avec l'ancien workspace statique. Le fallback statique reste disponible sur `/legacy-workspace`.
