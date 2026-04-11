@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes_process import source_summary_service
+from app.api.routes_process import jira_read_service, source_summary_service
 from app.main import app
 
 client = TestClient(app)
@@ -19,6 +19,17 @@ class FakeSourceReader:
         if self.should_raise:
             raise RuntimeError("source unavailable")
         return self.payload
+
+
+class FakeJiraReadService:
+    def __init__(self, result=None, should_raise: bool = False) -> None:
+        self.result = result
+        self.should_raise = should_raise
+
+    def read_issue(self, request) -> dict | None:
+        if self.should_raise:
+            raise RuntimeError("jira unavailable")
+        return self.result
 
 
 def test_health_returns_ok() -> None:
@@ -384,6 +395,66 @@ def test_source_summary_invalid_request_returns_422() -> None:
             "source_type": "file",
             "source_ref": "abc",
         },
+    )
+
+    assert response.status_code == 422
+
+
+def test_jira_read_creates_run_and_returns_structured_issue() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(
+        result={
+            "issue_key": "PO-123",
+            "title": "Remise incorrecte sur commande web",
+            "description": "Le calcul de remise ne s'applique pas dans certains cas.",
+            "status": "In Progress",
+            "issue_type": "Bug",
+            "priority": "High",
+            "assignee": "Jane Doe",
+            "labels": ["remise", "web"],
+            "url": "https://jira.example.com/browse/PO-123",
+            "summary": "Issue Jira lue: Remise incorrecte sur commande web. Type: Bug. Statut: In Progress. Priorite: High.",
+            "open_points": [],
+        }
+    ).read_issue
+    try:
+        response = client.post(
+            "/jira-read",
+            json={"issue_key": "PO-123"},
+        )
+    finally:
+        jira_read_service.read_issue = original_service
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "run_id" in payload
+    assert payload["result"]["issue_key"] == "PO-123"
+    assert payload["result"]["title"] == "Remise incorrecte sur commande web"
+
+    run_response = client.get(f"/runs/{payload['run_id']}")
+    assert run_response.status_code == 200
+    assert run_response.json()["result"]["issue_key"] == "PO-123"
+
+
+def test_jira_read_unknown_issue_returns_404() -> None:
+    original_service = jira_read_service.read_issue
+    jira_read_service.read_issue = FakeJiraReadService(result=None).read_issue
+    try:
+        response = client.post(
+            "/jira-read",
+            json={"issue_key": "PO-404"},
+        )
+    finally:
+        jira_read_service.read_issue = original_service
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Jira issue not found"
+
+
+def test_jira_read_invalid_request_returns_422() -> None:
+    response = client.post(
+        "/jira-read",
+        json={"issue_key": ""},
     )
 
     assert response.status_code == 422

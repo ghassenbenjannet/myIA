@@ -5,10 +5,11 @@ from pydantic import BaseModel, Field
 from app.schemas.analysis import AnalysisResult
 from app.schemas.context import ContextUsed
 from app.schemas.documentation import DocumentationResult
+from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
 from app.schemas.ticket import TicketResult
 
-WorkResult = AnalysisResult | TicketResult | DocumentationResult | SourceSummaryResult
+WorkResult = AnalysisResult | TicketResult | DocumentationResult | SourceSummaryResult | JiraIssueResult
 
 
 class WorkMemoryRun(BaseModel):

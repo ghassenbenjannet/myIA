@@ -2,17 +2,21 @@ from fastapi import APIRouter, HTTPException
 
 from app.orchestrator.engine import ProcessEngine
 from app.schemas.continuation import ContinueRunRequest
+from app.schemas.jira_request import JiraReadRequest
+from app.schemas.jira_response import JiraReadResponse
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.schemas.source_request import SourceSummaryRequest
 from app.schemas.source_response import SourceSummaryResponse
 from app.schemas.work_memory import WorkMemoryRun
+from app.services.jira_read_service import JiraReadService
 from app.services.source_summary_service import SourceSummaryService
 from app.services.work_memory_repository import work_memory_repository
 
 router = APIRouter(tags=["process"])
 engine = ProcessEngine()
 source_summary_service = SourceSummaryService()
+jira_read_service = JiraReadService()
 
 
 @router.post("/process", response_model=ProcessResponse)
@@ -47,3 +51,23 @@ def source_summary(request: SourceSummaryRequest) -> SourceSummaryResponse:
         result=result,
     )
     return SourceSummaryResponse(run_id=run.run_id, result=result)
+
+
+@router.post("/jira-read", response_model=JiraReadResponse)
+def jira_read(request: JiraReadRequest) -> JiraReadResponse:
+    try:
+        result = jira_read_service.read_issue(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Jira issue could not be read") from exc
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Jira issue not found")
+
+    run = work_memory_repository.create_run(
+        raw_input=request.issue_key,
+        target_output="jira_read",
+        request_type="jira_read",
+        final_workflow="jira_read",
+        result=result,
+    )
+    return JiraReadResponse(run_id=run.run_id, result=result)
