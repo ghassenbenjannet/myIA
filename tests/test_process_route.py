@@ -63,6 +63,8 @@ def test_workspace_front_returns_200() -> None:
 
     assert response.status_code == 200
     assert "Shadow PO AI Workspace" in response.text
+    assert "Workspace" in response.text
+    assert "Vue d'ensemble" in response.text
     assert "Topics" in response.text
     assert "Dossier Topic" in response.text
     assert "/confluence-read" in response.text
