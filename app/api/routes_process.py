@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.orchestrator.engine import ProcessEngine
+from app.schemas.continuation import ContinueRunRequest
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.schemas.work_memory import WorkMemoryRun
@@ -21,3 +22,8 @@ def get_run(run_id: str) -> WorkMemoryRun:
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+@router.post("/runs/{run_id}/continue", response_model=ProcessResponse)
+def continue_run(run_id: str, request: ContinueRunRequest) -> ProcessResponse:
+    return engine.continue_run(run_id, request.action)

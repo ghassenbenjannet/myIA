@@ -1,4 +1,5 @@
 from app.schemas.documentation import DocumentationResult
+from app.schemas.analysis import AnalysisResult
 
 
 class DocumentationService:
@@ -52,6 +53,37 @@ class DocumentationService:
                 },
             ],
             detected_type=classification["request_type"],
+        )
+
+    def from_analysis(self, analysis: AnalysisResult) -> DocumentationResult:
+        return DocumentationResult(
+            document_type="working_draft",
+            title=self._build_title(analysis.reformulation),
+            summary="Document de travail derive d'une analyse existante.",
+            context=analysis.context_hint or "Contexte complementaire non fourni.",
+            sections=[
+                {
+                    "title": "Contexte",
+                    "content": analysis.context_hint or analysis.reformulation,
+                },
+                {
+                    "title": "Objectif",
+                    "content": analysis.expected_behavior or analysis.reformulation,
+                },
+                {
+                    "title": "Points cles",
+                    "content": analysis.business_impacts + analysis.technical_impacts or [analysis.request_summary],
+                },
+                {
+                    "title": "Questions ouvertes",
+                    "content": analysis.open_questions or analysis.ambiguities,
+                },
+                {
+                    "title": "Prochaines etapes",
+                    "content": [analysis.recommended_next_step],
+                },
+            ],
+            detected_type=analysis.detected_type,
         )
 
     def _build_title(self, user_input: str) -> str:

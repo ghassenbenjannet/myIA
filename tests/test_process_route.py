@@ -233,8 +233,85 @@ def test_process_persists_run_and_allows_readback() -> None:
     assert run_payload["intermediate_analysis"] == process_payload["intermediate_analysis"]
 
 
+def test_continue_run_from_analysis_to_ticket_creates_child_run() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "La remise ne se calcule plus pour la commande web et le comportement attendu doit etre clarifie.",
+            "target_output": "analysis",
+        },
+    )
+    parent_run_id = process_response.json()["run_id"]
+
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "draft_ticket"},
+    )
+
+    assert continue_response.status_code == 200
+    child_payload = continue_response.json()
+    assert child_payload["run_id"] != parent_run_id
+    assert child_payload["selected_workflow"] == "ticket"
+    assert "title" in child_payload["result"]
+
+    child_run_response = client.get(f"/runs/{child_payload['run_id']}")
+    child_run_payload = child_run_response.json()
+    assert child_run_payload["parent_run_id"] == parent_run_id
+    assert child_run_payload["continuation_action"] == "draft_ticket"
+
+
+def test_continue_run_from_analysis_to_documentation_creates_child_run() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "La facturation doit etre clarifiee pour les commandes web.",
+            "target_output": "analysis",
+        },
+    )
+    parent_run_id = process_response.json()["run_id"]
+
+    continue_response = client.post(
+        f"/runs/{parent_run_id}/continue",
+        json={"action": "draft_documentation"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["selected_workflow"] == "documentation"
+    assert payload["run_id"] != parent_run_id
+    assert [section["title"] for section in payload["result"]["sections"]] == [
+        "Contexte",
+        "Objectif",
+        "Points cles",
+        "Questions ouvertes",
+        "Prochaines etapes",
+    ]
+
+
 def test_get_unknown_run_returns_404() -> None:
     response = client.get("/runs/unknown-run-id")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Run not found"
+
+
+def test_continue_unknown_run_returns_404() -> None:
+    response = client.post("/runs/unknown-run-id/continue", json={"action": "draft_ticket"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Run not found"
+
+
+def test_continue_with_invalid_action_returns_422() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "La remise ne se calcule plus pour la commande web.",
+            "target_output": "analysis",
+        },
+    )
+    run_id = process_response.json()["run_id"]
+
+    response = client.post(f"/runs/{run_id}/continue", json={"action": "publish"})
+
+    assert response.status_code == 422
