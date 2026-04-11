@@ -6,6 +6,7 @@ from app.orchestrator.router import WorkflowRouter
 from app.quality.gate import QualityGate
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
+from app.services.context_provider import ReadOnlyContextProvider
 
 
 class ProcessEngine:
@@ -27,6 +28,7 @@ class ProcessEngine:
         self.ticket_service = TicketService()
         self.documentation_service = DocumentationService()
         self.quality_gate = QualityGate()
+        self.context_provider = ReadOnlyContextProvider()
 
     def process(self, request: ProcessRequest) -> ProcessResponse:
         classification = self.classifier.classify(
@@ -40,24 +42,28 @@ class ProcessEngine:
             target_output=request.target_output,
         )
         intermediate_analysis = None
+        context_used = None
 
         if workflow == "analysis":
+            context_used = self._get_context_for_analysis(request, classification)
             result = self.analysis_service.run(
                 user_input=request.user_input,
-                context_hint=request.context_hint,
+                context_hint=self._merge_context_hint(request.context_hint, context_used),
                 classification=classification,
             )
         elif workflow == "ticket":
             if self._should_analyze_before_ticket(request, classification):
+                context_used = self._get_context_for_analysis(request, classification)
                 intermediate_analysis = self.analysis_service.run(
                     user_input=request.user_input,
-                    context_hint=request.context_hint,
+                    context_hint=self._merge_context_hint(request.context_hint, context_used),
                     classification=classification,
                 )
                 if self._analysis_confirms_fuzziness(intermediate_analysis):
                     result = self.ticket_service.from_analysis(intermediate_analysis)
                 else:
                     intermediate_analysis = None
+                    context_used = None
                     result = self.ticket_service.run(
                         user_input=request.user_input,
                         context_hint=request.context_hint,
@@ -87,6 +93,7 @@ class ProcessEngine:
             confidence=classification["confidence"],
             result=result,
             intermediate_analysis=intermediate_analysis,
+            context_used=context_used,
             quality_checks=quality["quality_checks"],
             warnings=quality["warnings"],
         )
@@ -130,3 +137,26 @@ class ProcessEngine:
         for source, target in replacements.items():
             normalized = normalized.replace(source, target)
         return normalized
+
+    def _get_context_for_analysis(
+        self,
+        request: ProcessRequest,
+        classification: dict,
+    ):
+        return self.context_provider.fetch(
+            user_input=request.user_input,
+            context_hint=request.context_hint,
+            request_type=classification["request_type"],
+        )
+
+    def _merge_context_hint(self, context_hint: str | None, context_used) -> str | None:
+        if context_used is None:
+            return context_hint
+
+        parts: list[str] = []
+        if context_hint:
+            parts.append(context_hint)
+        parts.append(f"Contexte externe ({context_used.source_name}): {context_used.summary}")
+        if context_used.snippets:
+            parts.append(f"Extraits utiles: {' '.join(context_used.snippets)}")
+        return " ".join(parts)

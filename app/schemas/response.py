@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 
 from app.schemas.analysis import AnalysisResult
+from app.schemas.context import ContextUsed
 from app.schemas.documentation import DocumentationResult
 from app.schemas.ticket import TicketResult
 
@@ -15,6 +16,10 @@ class ProcessResponse(BaseModel):
     intermediate_analysis: AnalysisResult | None = Field(
         default=None,
         description="Optional intermediate analysis when a ticket is derived from analysis.",
+    )
+    context_used: ContextUsed | None = Field(
+        default=None,
+        description="Optional readonly external context used during analysis.",
     )
     quality_checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
