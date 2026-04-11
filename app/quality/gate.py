@@ -68,6 +68,36 @@ class QualityGate:
         else:
             warnings.append("analysis_missing_open_questions")
 
+        if result.get("recommended_next_step"):
+            quality_checks.append("analysis_recommended_next_step_present")
+        else:
+            warnings.append("analysis_missing_recommended_next_step")
+
+        if result.get("recommended_output"):
+            quality_checks.append("analysis_recommended_output_present")
+        else:
+            warnings.append("analysis_missing_recommended_output")
+
+        if result.get("current_behavior"):
+            quality_checks.append("analysis_current_behavior_present")
+        else:
+            warnings.append("analysis_missing_current_behavior")
+
+        if result.get("expected_behavior"):
+            quality_checks.append("analysis_expected_behavior_present")
+        else:
+            warnings.append("analysis_missing_expected_behavior")
+
+        if result.get("business_impacts") or result.get("technical_impacts"):
+            quality_checks.append("analysis_impacts_present")
+        else:
+            warnings.append("analysis_missing_impacts")
+
+        if result.get("dependencies"):
+            quality_checks.append("analysis_dependencies_present")
+        else:
+            warnings.append("analysis_missing_dependencies")
+
     def _check_ticket(
         self,
         result: dict,

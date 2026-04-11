@@ -51,11 +51,36 @@ def test_process_with_documentation_text_routes_to_documentation() -> None:
     assert response.json()["selected_workflow"] == "documentation"
 
 
-def test_process_response_contains_expected_fields() -> None:
+def test_process_analysis_response_contains_enriched_analysis_fields() -> None:
     response = client.post(
         "/process",
         json={
-            "user_input": "Besoin flou a analyser",
+            "user_input": (
+                "La remise ne se calcule plus pour la commande web. "
+                "Le calcul attendu doit s'appliquer aussi au flux API et batch."
+            ),
+            "context_hint": "Sujet metier a cadrer",
+            "target_output": "analysis",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    result = payload["result"]
+    assert payload["selected_workflow"] == "analysis"
+    assert "current_behavior" in result
+    assert "expected_behavior" in result
+    assert "business_impacts" in result
+    assert "technical_impacts" in result
+    assert "dependencies" in result
+    assert "recommended_output" in result
+
+
+def test_process_analysis_route_keeps_api_contract() -> None:
+    response = client.post(
+        "/process",
+        json={
+            "user_input": "Besoin flou a analyser sur la facturation",
             "target_output": "auto",
         },
     )
