@@ -21,6 +21,17 @@ class WorkTopic(BaseModel):
     status: str = "active"
 
 
+class TopicSummary(BaseModel):
+    topic_id: str
+    topic_label: str
+    created_at: datetime
+    updated_at: datetime
+    root_run_id: str
+    latest_run_id: str
+    status: str
+    run_count: int
+
+
 class TopicRunView(WorkMemoryRun):
     available_actions: list[str] = Field(default_factory=list)
 

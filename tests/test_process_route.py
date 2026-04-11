@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.api.routes_process import jira_read_service, source_summary_service
 from app.main import app
 from app.services.jira_read_service import JiraIssueNotFoundError, JiraNotConfiguredError
+from app.services.topic_repository import topic_repository
 
 client = TestClient(app)
 
@@ -306,6 +307,22 @@ def test_process_creates_topic_and_topic_endpoint_returns_linked_run() -> None:
     ]
 
 
+def test_get_topics_returns_200() -> None:
+    response = client.get("/topics")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_get_topics_returns_empty_list_when_no_topic_exists() -> None:
+    topic_repository.clear()
+
+    response = client.get("/topics")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_continue_run_from_analysis_to_ticket_creates_child_run() -> None:
     process_response = client.post(
         "/process",
@@ -393,6 +410,76 @@ def test_continuation_keeps_parent_topic_and_updates_topic_latest_run() -> None:
     assert topic_payload["topic"]["run_ids"] == [parent_payload["run_id"], child_payload["run_id"]]
     assert topic_payload["root_run"]["run_id"] == parent_payload["run_id"]
     assert topic_payload["latest_run"]["run_id"] == child_payload["run_id"]
+
+
+def test_get_topics_returns_topics_sorted_most_recent_first() -> None:
+    topic_repository.clear()
+
+    first_response = client.post(
+        "/process",
+        json={
+            "user_input": "Premier sujet de travail",
+            "target_output": "analysis",
+        },
+    )
+    second_response = client.post(
+        "/process",
+        json={
+            "user_input": "Deuxieme sujet de travail",
+            "target_output": "analysis",
+        },
+    )
+
+    response = client.get("/topics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [topic["topic_id"] for topic in payload[:2]] == [
+        second_response.json()["topic_id"],
+        first_response.json()["topic_id"],
+    ]
+
+
+def test_get_topics_run_count_is_correct() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Sujet run count a suivre",
+            "target_output": "analysis",
+        },
+    )
+    parent_payload = process_response.json()
+    client.post(
+        f"/runs/{parent_payload['run_id']}/continue",
+        json={"action": "draft_documentation"},
+    )
+
+    response = client.get("/topics")
+
+    assert response.status_code == 200
+    topics_by_id = {topic["topic_id"]: topic for topic in response.json()}
+    assert topics_by_id[parent_payload["topic_id"]]["run_count"] == 2
+
+
+def test_get_topics_latest_run_id_is_updated_after_continuation() -> None:
+    process_response = client.post(
+        "/process",
+        json={
+            "user_input": "Sujet latest run a verifier",
+            "target_output": "analysis",
+        },
+    )
+    parent_payload = process_response.json()
+    continuation_response = client.post(
+        f"/runs/{parent_payload['run_id']}/continue",
+        json={"action": "draft_ticket"},
+    )
+
+    response = client.get("/topics")
+
+    assert response.status_code == 200
+    topics_by_id = {topic["topic_id"]: topic for topic in response.json()}
+    assert topics_by_id[parent_payload["topic_id"]]["latest_run_id"] == continuation_response.json()["run_id"]
 
 
 def test_get_topic_returns_runs_ordered_oldest_to_newest() -> None:

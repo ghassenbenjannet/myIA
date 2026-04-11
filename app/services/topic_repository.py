@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.schemas.topic import WorkTopic
+from app.schemas.topic import TopicSummary, WorkTopic
 from app.services.work_memory_repository import work_memory_repository
 
 
@@ -49,13 +49,28 @@ class InMemoryTopicRepository:
     def get_topic(self, topic_id: str) -> WorkTopic | None:
         return self._topics.get(topic_id)
 
-    def list_recent_topics(self, limit: int = 10) -> list[WorkTopic]:
+    def list_topics(self) -> list[WorkTopic]:
         topics = sorted(
             self._topics.values(),
             key=lambda topic: topic.updated_at,
             reverse=True,
         )
-        return topics[:limit]
+        return topics
+
+    def list_topic_summaries(self) -> list[TopicSummary]:
+        return [
+            TopicSummary(
+                topic_id=topic.topic_id,
+                topic_label=topic.topic_label,
+                created_at=topic.created_at,
+                updated_at=topic.updated_at,
+                root_run_id=topic.root_run_id,
+                latest_run_id=topic.latest_run_id,
+                status=topic.status,
+                run_count=len(topic.run_ids),
+            )
+            for topic in self.list_topics()
+        ]
 
     def build_default_label(self, raw_input: str, result) -> str:
         if hasattr(result, "title") and getattr(result, "title"):
@@ -80,6 +95,9 @@ class InMemoryTopicRepository:
             if run is not None:
                 runs.append(run)
         return sorted(runs, key=lambda run: run.created_at)
+
+    def clear(self) -> None:
+        self._topics.clear()
 
 
 topic_repository = InMemoryTopicRepository()

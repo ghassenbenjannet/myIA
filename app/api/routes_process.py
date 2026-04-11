@@ -8,7 +8,7 @@ from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.schemas.source_request import SourceSummaryRequest
 from app.schemas.source_response import SourceSummaryResponse
-from app.schemas.topic import TopicDetailResponse, build_topic_run_view
+from app.schemas.topic import TopicDetailResponse, TopicSummary, build_topic_run_view
 from app.schemas.work_memory import WorkMemoryRun
 from app.services.jira_read_service import (
     JiraIssueNotFoundError,
@@ -36,6 +36,11 @@ def get_run(run_id: str) -> WorkMemoryRun:
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+@router.get("/topics", response_model=list[TopicSummary])
+def list_topics() -> list[TopicSummary]:
+    return topic_repository.list_topic_summaries()
 
 
 @router.get("/topics/{topic_id}", response_model=TopicDetailResponse)
