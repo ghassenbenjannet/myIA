@@ -1,8 +1,24 @@
 from fastapi.testclient import TestClient
 
+from app.api.routes_process import source_summary_service
 from app.main import app
 
 client = TestClient(app)
+
+
+class FakeSourceReader:
+    def __init__(self, payload=None, should_raise: bool = False) -> None:
+        self.payload = payload or {
+            "url": "https://example.com/article",
+            "title": "Example Source",
+            "text": "Premier point utile. Deuxieme point utile. Troisieme point utile.",
+        }
+        self.should_raise = should_raise
+
+    def read_url(self, url: str) -> dict:
+        if self.should_raise:
+            raise RuntimeError("source unavailable")
+        return self.payload
 
 
 def test_health_returns_ok() -> None:
@@ -313,5 +329,61 @@ def test_continue_with_invalid_action_returns_422() -> None:
     run_id = process_response.json()["run_id"]
 
     response = client.post(f"/runs/{run_id}/continue", json={"action": "publish"})
+
+    assert response.status_code == 422
+
+
+def test_source_summary_creates_run_and_returns_summary() -> None:
+    original_reader = source_summary_service.source_reader
+    source_summary_service.source_reader = FakeSourceReader()
+    try:
+        response = client.post(
+            "/source-summary",
+            json={
+                "source_type": "url",
+                "source_ref": "https://example.com/article",
+                "context_hint": "Sujet de travail",
+            },
+        )
+    finally:
+        source_summary_service.source_reader = original_reader
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "run_id" in payload
+    assert payload["result"]["summary"]
+    assert payload["result"]["key_points"]
+
+    run_response = client.get(f"/runs/{payload['run_id']}")
+    assert run_response.status_code == 200
+    assert run_response.json()["result"]["source_ref"] == "https://example.com/article"
+
+
+def test_source_summary_reader_error_returns_502_without_crash() -> None:
+    original_reader = source_summary_service.source_reader
+    source_summary_service.source_reader = FakeSourceReader(should_raise=True)
+    try:
+        response = client.post(
+            "/source-summary",
+            json={
+                "source_type": "url",
+                "source_ref": "https://example.com/unavailable",
+            },
+        )
+    finally:
+        source_summary_service.source_reader = original_reader
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Source could not be read"
+
+
+def test_source_summary_invalid_request_returns_422() -> None:
+    response = client.post(
+        "/source-summary",
+        json={
+            "source_type": "file",
+            "source_ref": "abc",
+        },
+    )
 
     assert response.status_code == 422
