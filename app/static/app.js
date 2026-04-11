@@ -1,3 +1,6 @@
+const RECENT_RUNS_KEY = "shadow-po-recent-runs";
+const MAX_RECENT_RUNS = 8;
+
 function stringify(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -7,6 +10,65 @@ function escapeHtml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function getField(formId, name) {
+  return document.querySelector(`#${formId} [name="${name}"]`);
+}
+
+function scrollToSection(sectionId) {
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function markPrefilled(input) {
+  if (!input) {
+    return;
+  }
+  input.classList.add("prefilled");
+  window.clearTimeout(input._prefillTimer);
+  input._prefillTimer = window.setTimeout(() => input.classList.remove("prefilled"), 1400);
+}
+
+function setLookupRunId(runId) {
+  const input = getField("run-form", "run_id");
+  if (!input) {
+    return;
+  }
+  input.value = runId;
+  markPrefilled(input);
+}
+
+function setContinuationRunId(runId) {
+  const input = getField("continue-form", "run_id");
+  if (!input) {
+    return;
+  }
+  input.value = runId;
+  markPrefilled(input);
+}
+
+function applyLatestRun(runId) {
+  if (!runId) {
+    return;
+  }
+  setLookupRunId(runId);
+  setContinuationRunId(runId);
+}
+
+function submitForm(formId) {
+  document.getElementById(formId)?.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+}
+
+function relireRun(runId) {
+  setLookupRunId(runId);
+  scrollToSection("run-section");
+  submitForm("run-form");
+}
+
+function prepareContinuation(runId) {
+  setContinuationRunId(runId);
+  scrollToSection("continue-section");
+  getField("continue-form", "action")?.focus();
 }
 
 function renderList(title, items) {
@@ -42,14 +104,29 @@ function renderKvGrid(entries) {
     <div class="kv-grid">
       ${filtered
         .map(
-          ([label, value]) => `
-            <div class="kv-item">
+          ([label, value, strong]) => `
+            <div class="kv-item ${strong ? "strong" : ""}">
               <strong>${escapeHtml(label)}</strong>
               <span>${escapeHtml(Array.isArray(value) ? value.join(", ") : value)}</span>
             </div>
           `
         )
         .join("")}
+    </div>
+  `;
+}
+
+function renderRunActions(runId, options = {}) {
+  if (!runId) {
+    return "";
+  }
+  return `
+    <div class="action-bar">
+      <button class="secondary" type="button" data-run-action="lookup" data-run-id="${escapeHtml(runId)}">Relire ce run</button>
+      <button class="ghost" type="button" data-run-action="continue" data-run-id="${escapeHtml(runId)}">Continuer ce run</button>
+      ${options.parentRunId
+        ? `<button class="ghost" type="button" data-run-action="lookup" data-run-id="${escapeHtml(options.parentRunId)}">Relire le parent</button>`
+        : ""}
     </div>
   `;
 }
@@ -199,13 +276,17 @@ function renderRawBlock(payload) {
 function renderProcessLike(payload) {
   return `
     <div class="artifact-card">
-      <h3>Execution metadata</h3>
+      <h3 class="run-focus">
+        <span>Execution metadata</span>
+        <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
+      </h3>
       ${renderKvGrid([
-        ["Run ID", payload.run_id],
+        ["Run ID", payload.run_id, true],
         ["Request type", payload.request_type],
         ["Selected workflow", payload.selected_workflow],
         ["Confidence", payload.confidence],
       ])}
+      ${renderRunActions(payload.run_id)}
       ${renderList("Quality checks", payload.quality_checks || [])}
       ${renderList("Warnings", payload.warnings || [])}
     </div>
@@ -231,9 +312,12 @@ function renderProcessLike(payload) {
 function renderRun(payload) {
   return `
     <div class="artifact-card">
-      <h3>Run metadata</h3>
+      <h3 class="run-focus">
+        <span>Run metadata</span>
+        <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
+      </h3>
       ${renderKvGrid([
-        ["Run ID", payload.run_id],
+        ["Run ID", payload.run_id, true],
         ["Status", payload.status],
         ["Parent run ID", payload.parent_run_id],
         ["Continuation action", payload.continuation_action],
@@ -242,6 +326,7 @@ function renderRun(payload) {
         ["Final workflow", payload.final_workflow],
         ["Created at", payload.created_at],
       ])}
+      ${renderRunActions(payload.run_id, { parentRunId: payload.parent_run_id })}
       ${renderText("Raw input", payload.raw_input)}
     </div>
     ${renderArtifact(payload.result)}
@@ -259,12 +344,80 @@ function renderRun(payload) {
   `;
 }
 
-function setLoading(container) {
-  container.innerHTML = '<div class="message ok">Execution en cours...</div>';
+function removeInlineStatus(container) {
+  container.querySelector(".inline-status")?.remove();
 }
 
-function setError(container, message) {
-  container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+function showInlineStatus(container, type, message) {
+  removeInlineStatus(container);
+  container.insertAdjacentHTML(
+    "afterbegin",
+    `<div class="message ${type} inline-status">${escapeHtml(message)}</div>`
+  );
+}
+
+function getRecentRuns() {
+  try {
+    const raw = window.localStorage.getItem(RECENT_RUNS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentRuns(items) {
+  window.localStorage.setItem(RECENT_RUNS_KEY, JSON.stringify(items));
+}
+
+function rememberRun(entry) {
+  if (!entry?.run_id) {
+    return;
+  }
+  const current = getRecentRuns().filter((item) => item.run_id !== entry.run_id);
+  current.unshift({
+    run_id: entry.run_id,
+    workflow: entry.workflow || null,
+    request_type: entry.request_type || null,
+    parent_run_id: entry.parent_run_id || null,
+    source: entry.source || null,
+    timestamp: new Date().toISOString(),
+  });
+  saveRecentRuns(current.slice(0, MAX_RECENT_RUNS));
+  applyLatestRun(entry.run_id);
+  renderRecentRuns();
+}
+
+function renderRecentRuns() {
+  const container = document.getElementById("recent-runs");
+  const recentRuns = getRecentRuns();
+  if (!recentRuns.length) {
+    container.classList.add("empty");
+    container.innerHTML = "";
+    return;
+  }
+
+  container.classList.remove("empty");
+  container.innerHTML = recentRuns
+    .map(
+      (item) => `
+        <div class="recent-item">
+          <div class="recent-title">
+            <strong>${escapeHtml(item.run_id)}</strong>
+            <div class="action-bar">
+              <button class="secondary" type="button" data-run-action="lookup" data-run-id="${escapeHtml(item.run_id)}">Relire</button>
+              <button class="ghost" type="button" data-run-action="continue" data-run-id="${escapeHtml(item.run_id)}">Continuer</button>
+            </div>
+          </div>
+          <div class="recent-meta">
+            ${item.workflow ? `<span>workflow: ${escapeHtml(item.workflow)}</span>` : ""}
+            ${item.request_type ? `<span>type: ${escapeHtml(item.request_type)}</span>` : ""}
+            ${item.parent_run_id ? `<span>parent: ${escapeHtml(item.parent_run_id)}</span>` : ""}
+            ${item.source ? `<span>source: ${escapeHtml(item.source)}</span>` : ""}
+          </div>
+        </div>
+      `
+    )
+    .join("");
 }
 
 async function apiRequest(path, options = {}) {
@@ -283,18 +436,19 @@ async function apiRequest(path, options = {}) {
   return payload;
 }
 
-function bindJsonForm(formId, outputId, buildRequest, requestFn, renderFn) {
+function bindJsonForm(formId, outputId, buildRequest, requestFn, renderFn, onSuccess) {
   const form = document.getElementById(formId);
   const output = document.getElementById(outputId);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    setLoading(output);
+    showInlineStatus(output, "ok", "Execution en cours...");
     try {
       const payload = await requestFn(buildRequest(new FormData(form)));
       output.innerHTML = renderFn(payload);
+      onSuccess?.(payload);
     } catch (error) {
-      setError(output, error.message || "Erreur reseau");
+      showInlineStatus(output, "error", error.message || "Erreur reseau");
     }
   });
 }
@@ -308,7 +462,14 @@ bindJsonForm(
     target_output: formData.get("target_output"),
   }),
   (payload) => apiRequest("/process", { method: "POST", body: stringify(payload) }),
-  renderProcessLike
+  renderProcessLike,
+  (payload) =>
+    rememberRun({
+      run_id: payload.run_id,
+      workflow: payload.selected_workflow,
+      request_type: payload.request_type,
+      source: "process",
+    })
 );
 
 bindJsonForm(
@@ -316,7 +477,15 @@ bindJsonForm(
   "run-output",
   (formData) => formData.get("run_id"),
   (runId) => apiRequest(`/runs/${encodeURIComponent(runId)}`),
-  renderRun
+  renderRun,
+  (payload) =>
+    rememberRun({
+      run_id: payload.run_id,
+      workflow: payload.final_workflow,
+      request_type: payload.request_type,
+      parent_run_id: payload.parent_run_id,
+      source: "run_lookup",
+    })
 );
 
 bindJsonForm(
@@ -331,7 +500,14 @@ bindJsonForm(
       method: "POST",
       body: stringify({ action: payload.action }),
     }),
-  renderProcessLike
+  renderProcessLike,
+  (payload) =>
+    rememberRun({
+      run_id: payload.run_id,
+      workflow: payload.selected_workflow,
+      request_type: payload.request_type,
+      source: "continuation",
+    })
 );
 
 bindJsonForm(
@@ -345,12 +521,23 @@ bindJsonForm(
   (payload) => apiRequest("/source-summary", { method: "POST", body: stringify(payload) }),
   (payload) => `
     <div class="artifact-card">
-      <h3>Source summary metadata</h3>
-      ${renderKvGrid([["Run ID", payload.run_id]])}
+      <h3 class="run-focus">
+        <span>Source summary metadata</span>
+        <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
+      </h3>
+      ${renderKvGrid([["Run ID", payload.run_id, true]])}
+      ${renderRunActions(payload.run_id)}
     </div>
     ${renderArtifact(payload.result)}
     ${renderRawBlock(payload)}
-  `
+  `,
+  (payload) =>
+    rememberRun({
+      run_id: payload.run_id,
+      workflow: "source_summary",
+      request_type: "source_summary",
+      source: "source_summary",
+    })
 );
 
 bindJsonForm(
@@ -362,10 +549,49 @@ bindJsonForm(
   (payload) => apiRequest("/jira-read", { method: "POST", body: stringify(payload) }),
   (payload) => `
     <div class="artifact-card">
-      <h3>Jira read metadata</h3>
-      ${renderKvGrid([["Run ID", payload.run_id]])}
+      <h3 class="run-focus">
+        <span>Jira read metadata</span>
+        <span class="run-pill">Run ID: ${escapeHtml(payload.run_id)}</span>
+      </h3>
+      ${renderKvGrid([["Run ID", payload.run_id, true]])}
+      ${renderRunActions(payload.run_id)}
     </div>
     ${renderArtifact(payload.result)}
     ${renderRawBlock(payload)}
-  `
+  `,
+  (payload) =>
+    rememberRun({
+      run_id: payload.run_id,
+      workflow: "jira_read",
+      request_type: "jira_read",
+      source: "jira_read",
+    })
 );
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-run-action]");
+  if (!button) {
+    return;
+  }
+
+  const runId = button.getAttribute("data-run-id");
+  const action = button.getAttribute("data-run-action");
+  if (!runId || !action) {
+    return;
+  }
+
+  if (action === "lookup") {
+    relireRun(runId);
+    return;
+  }
+
+  if (action === "continue") {
+    prepareContinuation(runId);
+  }
+});
+
+const latestRun = getRecentRuns()[0]?.run_id;
+if (latestRun) {
+  applyLatestRun(latestRun);
+}
+renderRecentRuns();

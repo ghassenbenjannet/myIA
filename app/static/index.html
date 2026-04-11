@@ -12,21 +12,30 @@
       <div>
         <p class="eyebrow">Shadow PO AI</p>
         <h1>Workspace Artefacts</h1>
-        <p class="hero-copy">Piloter les workflows metier, relire les runs et continuer un travail sans passer par Swagger.</p>
+        <p class="hero-copy">Piloter les workflows metier, relire les runs, enchaîner les continuations et garder le contexte de travail visible dans un seul espace.</p>
       </div>
       <div class="hero-panel">
         <div class="hero-chip">/process</div>
         <div class="hero-chip">/runs/{run_id}</div>
+        <div class="hero-chip">/runs/{run_id}/continue</div>
         <div class="hero-chip">/source-summary</div>
         <div class="hero-chip">/jira-read</div>
       </div>
     </header>
 
     <main class="workspace">
-      <section class="panel">
+      <section class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Derniers Runs Utiles</h2>
+          <p>Les derniers `run_id` vus ou generes restent disponibles dans la session locale pour relire un artefact ou preparer une continuation sans ressaisie.</p>
+        </div>
+        <div id="recent-runs" class="recent-runs"></div>
+      </section>
+
+      <section id="process-section" class="panel">
         <div class="panel-head">
           <h2>Process</h2>
-          <p>Lancer une analyse, un ticket ou une documentation a partir d'une demande libre.</p>
+          <p>Entrer une demande metier libre puis laisser le backend choisir ou executer le workflow cible.</p>
         </div>
         <form id="process-form" class="form-grid">
           <label>
@@ -51,10 +60,10 @@
         <div id="process-output" class="output"></div>
       </section>
 
-      <section class="panel">
+      <section id="run-section" class="panel">
         <div class="panel-head">
           <h2>Run Lookup</h2>
-          <p>Relire un artefact stocke et ses metadonnees de filiation.</p>
+          <p>Relire un run, visualiser sa filiation et repartir d’un artefact deja produit.</p>
         </div>
         <form id="run-form" class="form-grid compact">
           <label>
@@ -66,10 +75,10 @@
         <div id="run-output" class="output"></div>
       </section>
 
-      <section class="panel">
+      <section id="continue-section" class="panel">
         <div class="panel-head">
           <h2>Continuation</h2>
-          <p>Reprendre un run existant pour produire un nouvel artefact enfant.</p>
+          <p>Preparer rapidement un enfant de run a partir du dernier artefact utile ou d’un parent relu.</p>
         </div>
         <form id="continue-form" class="form-grid compact">
           <label>
@@ -89,10 +98,10 @@
         <div id="continue-output" class="output"></div>
       </section>
 
-      <section class="panel">
+      <section id="source-section" class="panel">
         <div class="panel-head">
           <h2>Source Summary</h2>
-          <p>Lire une URL ciblee et produire un resume de travail structure.</p>
+          <p>Lire une URL ciblee et produire un resume de travail reutilisable dans la suite du workflow.</p>
         </div>
         <form id="source-form" class="form-grid">
           <label>
@@ -114,10 +123,10 @@
         <div id="source-output" class="output"></div>
       </section>
 
-      <section class="panel">
+      <section id="jira-section" class="panel">
         <div class="panel-head">
           <h2>Jira Read</h2>
-          <p>Lire une issue Jira par cle et stocker un artefact compact.</p>
+          <p>Lire une issue Jira par cle, conserver son artefact, puis la transformer plus vite en documentation, analyse ou ticket.</p>
         </div>
         <form id="jira-form" class="form-grid compact">
           <label>
