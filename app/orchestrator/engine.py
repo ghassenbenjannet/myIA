@@ -7,6 +7,7 @@ from app.quality.gate import QualityGate
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
 from app.services.context_provider import ReadOnlyContextProvider
+from app.services.context_selection import ContextSelectionPolicy
 
 
 class ProcessEngine:
@@ -29,6 +30,7 @@ class ProcessEngine:
         self.documentation_service = DocumentationService()
         self.quality_gate = QualityGate()
         self.context_provider = ReadOnlyContextProvider()
+        self.context_selection_policy = ContextSelectionPolicy()
 
     def process(self, request: ProcessRequest) -> ProcessResponse:
         classification = self.classifier.classify(
@@ -45,7 +47,12 @@ class ProcessEngine:
         context_used = None
 
         if workflow == "analysis":
-            context_used = self._get_context_for_analysis(request, classification)
+            context_used = self._maybe_get_context_for_analysis(
+                request=request,
+                classification=classification,
+                workflow=workflow,
+                analyze_then_ticket=False,
+            )
             result = self.analysis_service.run(
                 user_input=request.user_input,
                 context_hint=self._merge_context_hint(request.context_hint, context_used),
@@ -53,7 +60,12 @@ class ProcessEngine:
             )
         elif workflow == "ticket":
             if self._should_analyze_before_ticket(request, classification):
-                context_used = self._get_context_for_analysis(request, classification)
+                context_used = self._maybe_get_context_for_analysis(
+                    request=request,
+                    classification=classification,
+                    workflow=workflow,
+                    analyze_then_ticket=True,
+                )
                 intermediate_analysis = self.analysis_service.run(
                     user_input=request.user_input,
                     context_hint=self._merge_context_hint(request.context_hint, context_used),
@@ -138,11 +150,22 @@ class ProcessEngine:
             normalized = normalized.replace(source, target)
         return normalized
 
-    def _get_context_for_analysis(
+    def _maybe_get_context_for_analysis(
         self,
         request: ProcessRequest,
         classification: dict,
+        workflow: str,
+        analyze_then_ticket: bool,
     ):
+        if not self.context_selection_policy.should_use_context(
+            user_input=request.user_input,
+            workflow=workflow,
+            target_output=request.target_output,
+            request_type=classification["request_type"],
+            analyze_then_ticket=analyze_then_ticket,
+        ):
+            return None
+
         return self.context_provider.fetch(
             user_input=request.user_input,
             context_hint=request.context_hint,
