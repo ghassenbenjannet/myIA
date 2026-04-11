@@ -1,3 +1,6 @@
+from app.schemas.documentation import DocumentationResult
+
+
 class DocumentationService:
     """
     MVP documentation service.
@@ -9,40 +12,40 @@ class DocumentationService:
         user_input: str,
         context_hint: str | None,
         classification: dict,
-    ) -> dict:
-        return {
-            "document_type": "working_draft",
-            "title": self._build_title(user_input),
-            "summary": "Draft de documentation structuré à partir de la demande fournie.",
-            "context": context_hint or "No additional context provided.",
-            "sections": [
+    ) -> DocumentationResult:
+        return DocumentationResult(
+            document_type="working_draft",
+            title=self._build_title(user_input),
+            summary="Draft de documentation structure a partir de la demande fournie.",
+            context=context_hint or "No additional context provided.",
+            sections=[
                 {
                     "title": "Contexte",
                     "content": user_input,
                 },
                 {
-                    "title": "Points clés",
-                    "content": "À compléter ou affiner lors de la validation métier.",
+                    "title": "Points cles",
+                    "content": "A completer ou affiner lors de la validation metier.",
                 },
                 {
                     "title": "Questions ouvertes",
                     "content": [
-                        "Quels éléments doivent être documentés en priorité ?",
+                        "Quels elements doivent etre documentes en priorite ?",
                         "Quel est le public cible de cette documentation ?",
-                        "Quel niveau de détail est attendu ?",
+                        "Quel niveau de detail est attendu ?",
                     ],
                 },
                 {
-                    "title": "Prochaines étapes",
+                    "title": "Prochaines etapes",
                     "content": [
                         "Valider la structure du document.",
-                        "Compléter les zones encore incomplètes.",
-                        "Publier dans l'outil cible après validation.",
+                        "Completer les zones encore incompletes.",
+                        "Publier dans l'outil cible apres validation.",
                     ],
                 },
             ],
-            "detected_type": classification["request_type"],
-        }
+            detected_type=classification["request_type"],
+        )
 
     def _build_title(self, user_input: str) -> str:
         short_text = user_input.strip()

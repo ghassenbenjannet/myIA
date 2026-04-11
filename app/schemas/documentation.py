@@ -1,6 +1,12 @@
-from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class DocumentationResult:
-    content: str
+class DocumentationResult(BaseModel):
+    document_type: str
+    title: str
+    summary: str
+    context: str
+    sections: list[dict[str, Any]] = Field(default_factory=list)
+    detected_type: str

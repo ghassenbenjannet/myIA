@@ -21,6 +21,7 @@ class ProcessEngine:
         classification = self.classifier.classify(
             user_input=request.user_input,
             context_hint=request.context_hint,
+            target_output=request.target_output,
         )
 
         workflow = self.router.route(

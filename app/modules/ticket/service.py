@@ -1,3 +1,6 @@
+from app.schemas.ticket import TicketResult
+
+
 class TicketService:
     """
     MVP ticket generation service.
@@ -9,19 +12,19 @@ class TicketService:
         user_input: str,
         context_hint: str | None,
         classification: dict,
-    ) -> dict:
+    ) -> TicketResult:
         request_type = classification["request_type"]
 
-        return {
-            "ticket_type": self._map_ticket_type(request_type),
-            "title": self._build_title(request_type, user_input),
-            "description": user_input,
-            "context": context_hint or "No additional context provided.",
-            "business_goal": self._build_business_goal(request_type),
-            "acceptance_criteria": self._build_acceptance_criteria(request_type),
-            "dependencies": self._build_dependencies(user_input),
-            "open_points": self._build_open_points(user_input),
-        }
+        return TicketResult(
+            ticket_type=self._map_ticket_type(request_type),
+            title=self._build_title(request_type, user_input),
+            description=user_input,
+            context=context_hint or "No additional context provided.",
+            business_goal=self._build_business_goal(request_type),
+            acceptance_criteria=self._build_acceptance_criteria(request_type),
+            dependencies=self._build_dependencies(user_input),
+            open_points=self._build_open_points(user_input),
+        )
 
     def _map_ticket_type(self, request_type: str) -> str:
         if request_type == "bug":
@@ -47,25 +50,25 @@ class TicketService:
 
     def _build_business_goal(self, request_type: str) -> str:
         if request_type == "bug":
-            return "Corriger un comportement incorrect observé."
+            return "Corriger un comportement incorrect observe."
         if request_type == "evolution":
-            return "Faire évoluer le produit pour répondre à un nouveau besoin."
+            return "Faire evoluer le produit pour repondre a un nouveau besoin."
         if request_type == "recipe":
-            return "Préparer ou compléter la couverture de recette."
+            return "Preparer ou completer la couverture de recette."
         return "Structurer et piloter une action PO."
 
     def _build_acceptance_criteria(self, request_type: str) -> list[str]:
         criteria = [
-            "Le besoin est reformulé de manière claire et compréhensible.",
-            "Les points à confirmer sont explicités.",
-            "Les impacts ou dépendances sont identifiés si connus.",
+            "Le besoin est reformule de maniere claire et comprehensible.",
+            "Les points a confirmer sont explicites.",
+            "Les impacts ou dependances sont identifies si connus.",
         ]
 
         if request_type == "bug":
-            criteria.insert(0, "Le comportement observé et le comportement attendu sont distingués.")
+            criteria.insert(0, "Le comportement observe et le comportement attendu sont distingues.")
 
         if request_type == "evolution":
-            criteria.insert(0, "Le nouveau comportement attendu est défini.")
+            criteria.insert(0, "Le nouveau comportement attendu est defini.")
 
         return criteria
 
@@ -74,24 +77,24 @@ class TicketService:
         lowered = user_input.lower()
 
         if "batch" in lowered:
-            dependencies.append("Vérifier les traitements batch concernés.")
+            dependencies.append("Verifier les traitements batch concernes.")
         if "import" in lowered:
-            dependencies.append("Vérifier les flux d'import concernés.")
+            dependencies.append("Verifier les flux d'import concernes.")
         if "api" in lowered:
-            dependencies.append("Vérifier les impacts éventuels sur les API.")
+            dependencies.append("Verifier les impacts eventuels sur les API.")
 
         return dependencies
 
     def _build_open_points(self, user_input: str) -> list[str]:
         open_points = [
-            "Le périmètre exact doit être confirmé.",
-            "Les règles métier détaillées doivent être validées.",
+            "Le perimetre exact doit etre confirme.",
+            "Les regles metier detaillees doivent etre validees.",
         ]
 
         lowered = user_input.lower()
         if "urgent" in lowered:
-            open_points.append("Le niveau de priorité doit être confirmé.")
+            open_points.append("Le niveau de priorite doit etre confirme.")
         if "prod" in lowered or "production" in lowered:
-            open_points.append("Confirmer si une anomalie est présente en production.")
+            open_points.append("Confirmer si une anomalie est presente en production.")
 
         return open_points
