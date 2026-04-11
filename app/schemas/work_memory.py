@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -12,8 +12,10 @@ WorkResult = AnalysisResult | TicketResult | DocumentationResult
 
 class WorkMemoryRun(BaseModel):
     run_id: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     status: str = "completed"
+    parent_run_id: str | None = None
+    continuation_action: str | None = None
     raw_input: str
     target_output: str
     request_type: str

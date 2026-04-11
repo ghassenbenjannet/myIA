@@ -1,11 +1,15 @@
+from fastapi import HTTPException
+
 from app.modules.analysis.service import AnalysisService
 from app.modules.classifier.service import ClassifierService
 from app.modules.documentation.service import DocumentationService
 from app.modules.ticket.service import TicketService
 from app.orchestrator.router import WorkflowRouter
 from app.quality.gate import QualityGate
+from app.schemas.analysis import AnalysisResult
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
+from app.schemas.work_memory import WorkMemoryRun
 from app.services.context_provider import ReadOnlyContextProvider
 from app.services.context_selection import ContextSelectionPolicy
 from app.services.work_memory_repository import work_memory_repository
@@ -122,6 +126,99 @@ class ProcessEngine:
             quality_checks=quality["quality_checks"],
             warnings=quality["warnings"],
         )
+
+    def continue_run(self, source_run_id: str, action: str) -> ProcessResponse:
+        source_run = self.work_memory_repository.get_run(source_run_id)
+        if source_run is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        analysis_source = self._get_analysis_source(source_run)
+        result, workflow, request_type, target_output, intermediate_analysis = self._build_continuation_result(
+            source_run=source_run,
+            action=action,
+            analysis_source=analysis_source,
+        )
+
+        quality = self.quality_gate.evaluate(
+            workflow=workflow,
+            result=result,
+        )
+
+        child_run = self.work_memory_repository.create_run(
+            raw_input=source_run.raw_input,
+            target_output=target_output,
+            request_type=request_type,
+            final_workflow=workflow,
+            result=result,
+            intermediate_analysis=intermediate_analysis,
+            context_used=source_run.context_used,
+            parent_run_id=source_run.run_id,
+            continuation_action=action,
+        )
+
+        return ProcessResponse(
+            run_id=child_run.run_id,
+            request_type=request_type,
+            selected_workflow=workflow,
+            confidence=0.95,
+            result=result,
+            intermediate_analysis=intermediate_analysis,
+            context_used=source_run.context_used,
+            quality_checks=quality["quality_checks"],
+            warnings=quality["warnings"],
+        )
+
+    def _build_continuation_result(
+        self,
+        source_run: WorkMemoryRun,
+        action: str,
+        analysis_source: AnalysisResult | None,
+    ):
+        if action == "draft_ticket":
+            if analysis_source is None:
+                raise HTTPException(status_code=400, detail="No analysis available for draft_ticket")
+            return (
+                self.ticket_service.from_analysis(analysis_source),
+                "ticket",
+                analysis_source.detected_type,
+                "ticket",
+                analysis_source,
+            )
+
+        if action == "draft_documentation":
+            if analysis_source is None:
+                raise HTTPException(status_code=400, detail="No analysis available for draft_documentation")
+            return (
+                self.documentation_service.from_analysis(analysis_source),
+                "documentation",
+                analysis_source.detected_type,
+                "documentation",
+                analysis_source,
+            )
+
+        if action == "refine_analysis":
+            if analysis_source is None:
+                raise HTTPException(status_code=400, detail="No analysis available for refine_analysis")
+            refined = analysis_source.model_copy(
+                update={
+                    "request_summary": "Analyse PO reprise a partir d'un run existant.",
+                    "recommended_next_step": "Completer les zones encore floues puis choisir le livrable suivant.",
+                }
+            )
+            return (
+                refined,
+                "analysis",
+                analysis_source.detected_type,
+                "analysis",
+                None,
+            )
+
+        raise HTTPException(status_code=400, detail="Unsupported continuation action")
+
+    def _get_analysis_source(self, source_run: WorkMemoryRun) -> AnalysisResult | None:
+        if isinstance(source_run.result, AnalysisResult):
+            return source_run.result
+        return source_run.intermediate_analysis
 
     def _should_analyze_before_ticket(
         self,

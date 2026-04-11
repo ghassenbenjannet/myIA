@@ -34,9 +34,13 @@ class InMemoryWorkMemoryRepository:
         result,
         intermediate_analysis=None,
         context_used=None,
+        parent_run_id: str | None = None,
+        continuation_action: str | None = None,
     ) -> WorkMemoryRun:
         run = WorkMemoryRun(
             run_id=str(uuid4()),
+            parent_run_id=parent_run_id,
+            continuation_action=continuation_action,
             raw_input=raw_input,
             target_output=target_output,
             request_type=request_type,
