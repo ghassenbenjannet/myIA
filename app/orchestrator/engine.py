@@ -9,6 +9,17 @@ from app.schemas.response import ProcessResponse
 
 
 class ProcessEngine:
+    FUZZY_INPUT_HINTS = (
+        "on ne sait pas",
+        "a confirmer",
+        "a clarifier",
+        "à confirmer",
+        "à clarifier",
+        "probleme",
+        "problème",
+        "sujet",
+    )
+
     def __init__(self) -> None:
         self.classifier = ClassifierService()
         self.router = WorkflowRouter()
@@ -28,6 +39,7 @@ class ProcessEngine:
             request_type=classification["request_type"],
             target_output=request.target_output,
         )
+        intermediate_analysis = None
 
         if workflow == "analysis":
             result = self.analysis_service.run(
@@ -36,11 +48,27 @@ class ProcessEngine:
                 classification=classification,
             )
         elif workflow == "ticket":
-            result = self.ticket_service.run(
-                user_input=request.user_input,
-                context_hint=request.context_hint,
-                classification=classification,
-            )
+            if self._should_analyze_before_ticket(request, classification):
+                intermediate_analysis = self.analysis_service.run(
+                    user_input=request.user_input,
+                    context_hint=request.context_hint,
+                    classification=classification,
+                )
+                if self._analysis_confirms_fuzziness(intermediate_analysis):
+                    result = self.ticket_service.from_analysis(intermediate_analysis)
+                else:
+                    intermediate_analysis = None
+                    result = self.ticket_service.run(
+                        user_input=request.user_input,
+                        context_hint=request.context_hint,
+                        classification=classification,
+                    )
+            else:
+                result = self.ticket_service.run(
+                    user_input=request.user_input,
+                    context_hint=request.context_hint,
+                    classification=classification,
+                )
         else:
             result = self.documentation_service.run(
                 user_input=request.user_input,
@@ -58,6 +86,47 @@ class ProcessEngine:
             selected_workflow=workflow,
             confidence=classification["confidence"],
             result=result,
+            intermediate_analysis=intermediate_analysis,
             quality_checks=quality["quality_checks"],
             warnings=quality["warnings"],
         )
+
+    def _should_analyze_before_ticket(
+        self,
+        request: ProcessRequest,
+        classification: dict,
+    ) -> bool:
+        if request.target_output != "ticket":
+            return False
+
+        lowered = self._normalize_text(request.user_input)
+        if classification["request_type"] == "analysis":
+            return True
+
+        return any(hint in lowered for hint in self.FUZZY_INPUT_HINTS)
+
+    def _analysis_confirms_fuzziness(self, analysis) -> bool:
+        return (
+            analysis.expected_behavior is None
+            or bool(analysis.ambiguities)
+            or bool(analysis.open_questions)
+        )
+
+    def _normalize_text(self, value: str) -> str:
+        replacements = {
+            "é": "e",
+            "è": "e",
+            "ê": "e",
+            "à": "a",
+            "â": "a",
+            "ù": "u",
+            "û": "u",
+            "î": "i",
+            "ï": "i",
+            "ô": "o",
+            "ç": "c",
+        }
+        normalized = value.lower()
+        for source, target in replacements.items():
+            normalized = normalized.replace(source, target)
+        return normalized

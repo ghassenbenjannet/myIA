@@ -12,5 +12,9 @@ class ProcessResponse(BaseModel):
     selected_workflow: str = Field(..., description="Workflow selected by the router.")
     confidence: float = Field(..., ge=0.0, le=1.0)
     result: ProcessResult = Field(..., description="Structured business result.")
+    intermediate_analysis: AnalysisResult | None = Field(
+        default=None,
+        description="Optional intermediate analysis when a ticket is derived from analysis.",
+    )
     quality_checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
