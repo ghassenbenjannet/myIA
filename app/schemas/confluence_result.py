@@ -1,7 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class ConfluencePageResult(BaseModel):
+    result_type: Literal["confluence_read"] = "confluence_read"
     page_id: str
     title: str
     space_key: str | None = None

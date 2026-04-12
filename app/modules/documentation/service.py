@@ -1,7 +1,29 @@
+import json
+import logging
+import re
+
 from app.schemas.analysis import AnalysisResult
+from app.schemas.confluence_result import ConfluencePageResult
 from app.schemas.documentation import DocumentationResult
 from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
+from app.services.llm.provider import LLMProvider
+from app.services.prompt_manager import prompt_manager
+
+logger = logging.getLogger(__name__)
+
+_DOCUMENTATION_SYSTEM = (
+    "Tu es un assistant Product Owner expert. "
+    "Tu produis des documents de travail structurés en JSON. "
+    "Réponds UNIQUEMENT avec un objet JSON valide, sans texte supplémentaire, sans bloc de code markdown."
+)
+
+
+def _strip_code_block(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
 
 class DocumentationService:
@@ -15,7 +37,13 @@ class DocumentationService:
         user_input: str,
         context_hint: str | None,
         classification: dict,
+        llm_provider: LLMProvider | None = None,
     ) -> DocumentationResult:
+        if llm_provider is not None:
+            try:
+                return self._run_with_llm(user_input, context_hint, classification, llm_provider)
+            except Exception as exc:
+                logger.warning("LLM documentation.run failed, falling back to deterministic: %s", exc)
         return DocumentationResult(
             document_type="working_draft",
             title=self._build_title(user_input),
@@ -57,7 +85,32 @@ class DocumentationService:
             detected_type=classification["request_type"],
         )
 
-    def from_analysis(self, analysis: AnalysisResult) -> DocumentationResult:
+    def _run_with_llm(
+        self,
+        user_input: str,
+        context_hint: str | None,
+        classification: dict,
+        llm_provider: LLMProvider,
+    ) -> DocumentationResult:
+        prompt = prompt_manager.render(
+            "documentation",
+            {
+                "user_input": user_input,
+                "context_hint": context_hint,
+                "request_type": classification["request_type"],
+            },
+        )
+        raw = llm_provider.generate(prompt, system=_DOCUMENTATION_SYSTEM, workflow="documentation")
+        data = json.loads(_strip_code_block(raw))
+        self._normalize_doc_json(data, classification["request_type"])
+        return DocumentationResult(**data)
+
+    def from_analysis(self, analysis: AnalysisResult, llm_provider: LLMProvider | None = None) -> DocumentationResult:
+        if llm_provider is not None:
+            try:
+                return self._from_analysis_with_llm(analysis, llm_provider)
+            except Exception as exc:
+                logger.warning("LLM documentation.from_analysis failed, falling back to deterministic: %s", exc)
         return DocumentationResult(
             document_type="working_draft",
             title=self._build_title(analysis.reformulation),
@@ -87,6 +140,33 @@ class DocumentationService:
             ],
             detected_type=analysis.detected_type,
         )
+
+    def _normalize_doc_json(self, data: dict, request_type: str) -> None:
+        """In-place normalization of LLM-produced documentation JSON to match DocumentationResult schema."""
+        data.pop("result_type", None)
+        for str_field in ("title", "summary", "document_type"):
+            if not data.get(str_field):
+                data[str_field] = ""
+        if not data.get("context"):
+            data["context"] = ""
+        if not data.get("detected_type"):
+            data["detected_type"] = request_type
+        if not isinstance(data.get("sections"), list):
+            data["sections"] = []
+
+    def _from_analysis_with_llm(self, analysis: AnalysisResult, llm_provider: LLMProvider) -> DocumentationResult:
+        prompt = prompt_manager.render(
+            "documentation",
+            {
+                "user_input": analysis.reformulation,
+                "context_hint": analysis.context_hint,
+                "request_type": analysis.detected_type,
+            },
+        )
+        raw = llm_provider.generate(prompt, system=_DOCUMENTATION_SYSTEM, workflow="documentation")
+        data = json.loads(_strip_code_block(raw))
+        self._normalize_doc_json(data, analysis.detected_type)
+        return DocumentationResult(**data)
 
     def from_source_summary(self, source_summary: SourceSummaryResult) -> DocumentationResult:
         return DocumentationResult(
@@ -159,6 +239,37 @@ class DocumentationService:
                 },
             ],
             detected_type="jira_read",
+        )
+
+    def from_confluence_page(self, page: ConfluencePageResult) -> DocumentationResult:
+        return DocumentationResult(
+            document_type="working_draft",
+            title=self._build_title(page.title),
+            summary="Document de travail derive d'une page Confluence.",
+            context=f"Page Confluence lue: {page.page_id}",
+            sections=[
+                {
+                    "title": "Contexte",
+                    "content": page.url or page.page_id,
+                },
+                {
+                    "title": "Objectif",
+                    "content": page.title,
+                },
+                {
+                    "title": "Points cles",
+                    "content": page.key_points or [page.summary],
+                },
+                {
+                    "title": "Questions ouvertes",
+                    "content": page.open_points or ["Quels elements de la page Confluence doivent encore etre clarifies ?"],
+                },
+                {
+                    "title": "Prochaines etapes",
+                    "content": ["Clarifier le besoin attendu puis transformer cette page en analyse ou draft exploitable."],
+                },
+            ],
+            detected_type="confluence_read",
         )
 
     def _build_title(self, user_input: str) -> str:

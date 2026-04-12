@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(cmd /c \"cd /d c:\\\\Users\\\\ghass\\\\Desktop\\\\myIA\\\\frontend && npx tsc --noEmit 2>&1\")"
+    ]
+  }
+}

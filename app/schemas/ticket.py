@@ -1,7 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class TicketResult(BaseModel):
+    result_type: Literal["ticket"] = "ticket"
     ticket_type: str
     title: str
     description: str

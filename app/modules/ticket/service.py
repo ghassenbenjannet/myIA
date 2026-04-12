@@ -1,5 +1,26 @@
+import json
+import logging
+import re
+
 from app.schemas.analysis import AnalysisResult
 from app.schemas.ticket import TicketResult
+from app.services.llm.provider import LLMProvider
+from app.services.prompt_manager import prompt_manager
+
+logger = logging.getLogger(__name__)
+
+_TICKET_SYSTEM = (
+    "Tu es un assistant Product Owner expert. "
+    "Tu produis des tickets Jira structurés et actionnables en JSON. "
+    "Réponds UNIQUEMENT avec un objet JSON valide, sans texte supplémentaire, sans bloc de code markdown."
+)
+
+
+def _strip_code_block(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
 
 class TicketService:
@@ -67,7 +88,13 @@ class TicketService:
         user_input: str,
         context_hint: str | None,
         classification: dict,
+        llm_provider: LLMProvider | None = None,
     ) -> TicketResult:
+        if llm_provider is not None:
+            try:
+                return self._run_with_llm(user_input, context_hint, classification, llm_provider)
+            except Exception as exc:
+                logger.warning("LLM ticket.run failed, falling back to deterministic: %s", exc)
         request_type = classification["request_type"]
         lowered = self._normalize(user_input)
 
@@ -111,7 +138,38 @@ class TicketService:
             ),
         )
 
-    def from_analysis(self, analysis: AnalysisResult) -> TicketResult:
+    def _run_with_llm(
+        self,
+        user_input: str,
+        context_hint: str | None,
+        classification: dict,
+        llm_provider: LLMProvider,
+    ) -> TicketResult:
+        # Build a minimal analysis-style context for the ticket prompt
+        prompt = prompt_manager.render(
+            "ticket",
+            {
+                "reformulation": user_input,
+                "request_summary": context_hint or user_input,
+                "current_behavior": None,
+                "expected_behavior": None,
+                "business_impacts": "non déterminés",
+                "technical_impacts": "non déterminés",
+                "dependencies": "non déterminées",
+                "open_questions": "à préciser",
+            },
+        )
+        raw = llm_provider.generate(prompt, system=_TICKET_SYSTEM, workflow="ticket")
+        data = json.loads(_strip_code_block(raw))
+        self._normalize_ticket_json(data)
+        return TicketResult(**data)
+
+    def from_analysis(self, analysis: AnalysisResult, llm_provider: LLMProvider | None = None) -> TicketResult:
+        if llm_provider is not None:
+            try:
+                return self._from_analysis_with_llm(analysis, llm_provider)
+            except Exception as exc:
+                logger.warning("LLM ticket.from_analysis failed, falling back to deterministic: %s", exc)
         open_points = self._build_open_points_from_analysis(analysis)
 
         return TicketResult(
@@ -128,6 +186,41 @@ class TicketService:
             open_points=open_points,
             acceptance_criteria=self._build_acceptance_criteria_from_analysis(analysis, open_points),
         )
+
+    def _from_analysis_with_llm(self, analysis: AnalysisResult, llm_provider: LLMProvider) -> TicketResult:
+        def _fmt(items: list[str]) -> str:
+            return "\n".join(f"- {i}" for i in items) if items else "aucun"
+
+        prompt = prompt_manager.render(
+            "ticket",
+            {
+                "reformulation": analysis.reformulation,
+                "request_summary": analysis.request_summary,
+                "current_behavior": analysis.current_behavior,
+                "expected_behavior": analysis.expected_behavior,
+                "business_impacts": _fmt(analysis.business_impacts),
+                "technical_impacts": _fmt(analysis.technical_impacts),
+                "dependencies": _fmt(analysis.dependencies),
+                "open_questions": _fmt(analysis.open_questions),
+            },
+        )
+        raw = llm_provider.generate(prompt, system=_TICKET_SYSTEM, workflow="ticket")
+        data = json.loads(_strip_code_block(raw))
+        self._normalize_ticket_json(data)
+        return TicketResult(**data)
+
+    def _normalize_ticket_json(self, data: dict) -> None:
+        """In-place normalization of LLM-produced ticket JSON to match TicketResult schema."""
+        data.pop("result_type", None)
+        # TicketResult.description / context / business_goal are required str — coerce null to ""
+        for str_field in ("description", "context", "business_goal", "title"):
+            if not data.get(str_field):
+                data[str_field] = ""
+        for list_field in ("business_impacts", "technical_impacts", "dependencies", "open_points", "acceptance_criteria"):
+            if not isinstance(data.get(list_field), list):
+                data[list_field] = []
+        if not data.get("ticket_type"):
+            data["ticket_type"] = "task"
 
     def _normalize(self, value: str) -> str:
         replacements = {

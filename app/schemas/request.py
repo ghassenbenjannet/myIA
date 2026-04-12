@@ -17,3 +17,7 @@ class ProcessRequest(BaseModel):
         default="auto",
         description="Optional preferred output type.",
     )
+    mode: Literal["deterministic", "assisted"] = Field(
+        default="deterministic",
+        description="Processing mode. 'assisted' routes through the configured LLM provider.",
+    )

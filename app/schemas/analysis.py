@@ -1,7 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class AnalysisResult(BaseModel):
+    result_type: Literal["analysis"] = "analysis"
     reformulation: str
     request_summary: str
     context_hint: str | None = None

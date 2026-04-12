@@ -25,3 +25,5 @@ class ProcessResponse(BaseModel):
     )
     quality_checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    mode_used: str = Field(default="deterministic", description="Processing mode that was applied.")
+    llm_provider: str | None = Field(default=None, description="LLM provider name when mode_used is 'assisted'.")

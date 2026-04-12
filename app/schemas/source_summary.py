@@ -1,7 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class SourceSummaryResult(BaseModel):
+    result_type: Literal["source_summary"] = "source_summary"
     source_type: str
     source_ref: str
     source_title: str | None = None
