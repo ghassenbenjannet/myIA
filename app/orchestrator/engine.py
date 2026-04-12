@@ -7,6 +7,7 @@ from app.modules.ticket.service import TicketService
 from app.orchestrator.router import WorkflowRouter
 from app.quality.gate import QualityGate
 from app.schemas.analysis import AnalysisResult
+from app.schemas.confluence_result import ConfluencePageResult
 from app.schemas.jira_result import JiraIssueResult
 from app.schemas.request import ProcessRequest
 from app.schemas.response import ProcessResponse
@@ -14,6 +15,8 @@ from app.schemas.source_summary import SourceSummaryResult
 from app.schemas.work_memory import WorkMemoryRun
 from app.services.context_provider import ReadOnlyContextProvider
 from app.services.context_selection import ContextSelectionPolicy
+from app.services.llm.factory import create_llm_provider
+from app.services.llm.provider import LLMProvider
 from app.services.topic_repository import topic_repository
 from app.services.work_memory_repository import work_memory_repository
 
@@ -43,6 +46,10 @@ class ProcessEngine:
         self.topic_repository = topic_repository
 
     def process(self, request: ProcessRequest) -> ProcessResponse:
+        llm_provider: LLMProvider | None = (
+            create_llm_provider() if request.mode == "assisted" else None
+        )
+
         classification = self.classifier.classify(
             user_input=request.user_input,
             context_hint=request.context_hint,
@@ -67,6 +74,7 @@ class ProcessEngine:
                 user_input=request.user_input,
                 context_hint=self._merge_context_hint(request.context_hint, context_used),
                 classification=classification,
+                llm_provider=llm_provider,
             )
         elif workflow == "ticket":
             if self._should_analyze_before_ticket(request, classification):
@@ -80,9 +88,10 @@ class ProcessEngine:
                     user_input=request.user_input,
                     context_hint=self._merge_context_hint(request.context_hint, context_used),
                     classification=classification,
+                    llm_provider=llm_provider,
                 )
                 if self._analysis_confirms_fuzziness(intermediate_analysis):
-                    result = self.ticket_service.from_analysis(intermediate_analysis)
+                    result = self.ticket_service.from_analysis(intermediate_analysis, llm_provider=llm_provider)
                 else:
                     intermediate_analysis = None
                     context_used = None
@@ -90,18 +99,21 @@ class ProcessEngine:
                         user_input=request.user_input,
                         context_hint=request.context_hint,
                         classification=classification,
+                        llm_provider=llm_provider,
                     )
             else:
                 result = self.ticket_service.run(
                     user_input=request.user_input,
                     context_hint=request.context_hint,
                     classification=classification,
+                    llm_provider=llm_provider,
                 )
         else:
             result = self.documentation_service.run(
                 user_input=request.user_input,
                 context_hint=request.context_hint,
                 classification=classification,
+                llm_provider=llm_provider,
             )
 
         quality = self.quality_gate.evaluate(
@@ -138,6 +150,8 @@ class ProcessEngine:
             context_used=context_used,
             quality_checks=quality["quality_checks"],
             warnings=quality["warnings"],
+            mode_used=request.mode,
+            llm_provider=llm_provider.name if llm_provider is not None else None,
         )
 
     def continue_run(self, source_run_id: str, action: str) -> ProcessResponse:
@@ -183,6 +197,8 @@ class ProcessEngine:
             context_used=source_run.context_used,
             quality_checks=quality["quality_checks"],
             warnings=quality["warnings"],
+            mode_used="deterministic",
+            llm_provider=None,
         )
 
     def _build_continuation_result(
@@ -196,6 +212,9 @@ class ProcessEngine:
 
         if isinstance(source_run.result, JiraIssueResult):
             return self._build_jira_continuation_result(source_run.result, action)
+
+        if isinstance(source_run.result, ConfluencePageResult):
+            return self._build_confluence_continuation_result(source_run.result, action)
 
         if action == "draft_ticket":
             if analysis_source is None:
@@ -270,6 +289,30 @@ class ProcessEngine:
                 derived_analysis.detected_type,
                 "ticket",
                 derived_analysis,
+            )
+
+        raise HTTPException(status_code=400, detail="Unsupported continuation action")
+
+    def _build_confluence_continuation_result(
+        self,
+        page: ConfluencePageResult,
+        action: str,
+    ):
+        if action == "refine_analysis":
+            derived = self.analysis_service.from_confluence_page(page)
+            return (derived, "analysis", derived.detected_type, "analysis", None)
+
+        if action == "draft_ticket":
+            derived = self.analysis_service.from_confluence_page(page)
+            return (self.ticket_service.from_analysis(derived), "ticket", derived.detected_type, "ticket", derived)
+
+        if action == "draft_documentation":
+            return (
+                self.documentation_service.from_confluence_page(page),
+                "documentation",
+                "confluence_read",
+                "documentation",
+                None,
             )
 
         raise HTTPException(status_code=400, detail="Unsupported continuation action")

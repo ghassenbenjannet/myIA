@@ -1,7 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class JiraIssueResult(BaseModel):
+    result_type: Literal["jira_read"] = "jira_read"
     issue_key: str
     title: str
     description: str | None = None

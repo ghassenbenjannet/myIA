@@ -584,7 +584,7 @@ def test_get_topic_available_actions_do_not_expose_unsupported_actions_for_ticke
     assert runs_by_id[ticket_payload["run_id"]]["available_actions"] == []
 
 
-def test_get_topic_available_actions_do_not_expose_unsupported_actions_for_confluence_runs() -> None:
+def test_get_topic_available_actions_expose_supported_actions_for_confluence_runs() -> None:
     original_service = confluence_read_service.read_page
     confluence_read_service.read_page = FakeConfluenceReadService(
         result={
@@ -611,7 +611,45 @@ def test_get_topic_available_actions_do_not_expose_unsupported_actions_for_confl
     assert topic_response.status_code == 200
     topic_payload = topic_response.json()
     runs_by_id = {run["run_id"]: run for run in topic_payload["runs"]}
-    assert runs_by_id[payload["run_id"]]["available_actions"] == []
+    assert runs_by_id[payload["run_id"]]["available_actions"] == [
+        "refine_analysis",
+        "draft_ticket",
+        "draft_documentation",
+    ]
+
+
+def test_continue_confluence_run_to_analysis_creates_child_run() -> None:
+    original_service = confluence_read_service.read_page
+    confluence_read_service.read_page = FakeConfluenceReadService(
+        result={
+            "page_id": "52",
+            "title": "Regles de remise",
+            "space_key": "OPS",
+            "url": "https://confluence.example.com/wiki/spaces/OPS/pages/52",
+            "summary": "Page Confluence lue: Regles de remise. Espace: OPS.",
+            "content_preview": "La remise ne se calcule plus pareil sur certaines commandes web.",
+            "key_points": ["La page decrit une divergence de calcul de remise."],
+            "open_points": ["Le comportement attendu doit etre confirme."],
+        }
+    ).read_page
+    try:
+        confluence_response = client.post("/confluence-read", json={"page_id": "52"})
+    finally:
+        confluence_read_service.read_page = original_service
+
+    assert confluence_response.status_code == 200
+    parent_payload = confluence_response.json()
+
+    continue_response = client.post(
+        f"/runs/{parent_payload['run_id']}/continue",
+        json={"action": "refine_analysis"},
+    )
+
+    assert continue_response.status_code == 200
+    payload = continue_response.json()
+    assert payload["topic_id"] == parent_payload["topic_id"]
+    assert payload["selected_workflow"] == "analysis"
+    assert payload["result"]["result_type"] == "analysis"
 
 
 def test_get_topic_keeps_backward_compatible_fields() -> None:

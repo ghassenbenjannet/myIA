@@ -2,6 +2,7 @@ import { apiRequest } from "@/lib/api/client";
 import type {
   ConfluenceReadResponse,
   JiraReadResponse,
+  ProcessRequest,
   ProcessResponse,
   SourceSummaryResponse,
   TopicDetailResponse,
@@ -12,7 +13,7 @@ import type {
 export const shadowPoApi = {
   getTopics: () => apiRequest<TopicSummary[]>("/topics"),
   getTopic: (topicId: string) => apiRequest<TopicDetailResponse>(`/topics/${topicId}`),
-  process: (payload: { user_input: string; context_hint?: string | null; target_output: string }) =>
+  process: (payload: ProcessRequest) =>
     apiRequest<ProcessResponse>("/process", {
       method: "POST",
       body: JSON.stringify(payload),

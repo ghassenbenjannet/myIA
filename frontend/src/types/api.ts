@@ -1,6 +1,9 @@
 export type AvailableAction = "refine_analysis" | "draft_ticket" | "draft_documentation";
 
+// ── Result types (discriminated union via result_type) ────────────────────────
+
 export type AnalysisResult = {
+  result_type: "analysis";
   reformulation: string;
   request_summary: string;
   detected_type: string;
@@ -14,10 +17,11 @@ export type AnalysisResult = {
   risks: string[];
   open_questions: string[];
   recommended_output: string;
-  recommended_next_step?: string | null;
+  recommended_next_step: string;
 };
 
 export type TicketResult = {
+  result_type: "ticket";
   title: string;
   ticket_type: string;
   context?: string | null;
@@ -38,14 +42,17 @@ export type DocumentationSection = {
 };
 
 export type DocumentationResult = {
+  result_type: "documentation";
   title: string;
   document_type?: string | null;
   summary?: string | null;
   context?: string | null;
   sections: DocumentationSection[];
+  detected_type?: string | null;
 };
 
 export type SourceSummaryResult = {
+  result_type: "source_summary";
   source_type: string;
   source_ref: string;
   source_title?: string | null;
@@ -56,6 +63,7 @@ export type SourceSummaryResult = {
 };
 
 export type JiraIssueResult = {
+  result_type: "jira_read";
   issue_key: string;
   title: string;
   description?: string | null;
@@ -70,6 +78,7 @@ export type JiraIssueResult = {
 };
 
 export type ConfluencePageResult = {
+  result_type: "confluence_read";
   page_id: string;
   title: string;
   space_key?: string | null;
@@ -87,7 +96,24 @@ export type ContextUsed = {
   snippets: string[];
 };
 
-export type ProcessResult = AnalysisResult | TicketResult | DocumentationResult;
+export type ArtifactResult =
+  | AnalysisResult
+  | TicketResult
+  | DocumentationResult
+  | SourceSummaryResult
+  | JiraIssueResult
+  | ConfluencePageResult;
+
+// ── Process ───────────────────────────────────────────────────────────────────
+
+export type ProcessMode = "deterministic" | "assisted";
+
+export type ProcessRequest = {
+  user_input: string;
+  context_hint?: string | null;
+  target_output: string;
+  mode?: ProcessMode;
+};
 
 export type ProcessResponse = {
   run_id: string;
@@ -95,12 +121,16 @@ export type ProcessResponse = {
   request_type: string;
   selected_workflow: string;
   confidence: number;
-  result: ProcessResult;
+  result: AnalysisResult | TicketResult | DocumentationResult;
   intermediate_analysis?: AnalysisResult | null;
   context_used?: ContextUsed | null;
   quality_checks: string[];
   warnings: string[];
+  mode_used?: string;
+  llm_provider?: string | null;
 };
+
+// ── Work memory ───────────────────────────────────────────────────────────────
 
 export type WorkMemoryRun = {
   run_id: string;
@@ -113,10 +143,12 @@ export type WorkMemoryRun = {
   target_output: string;
   request_type: string;
   final_workflow: string;
-  result: AnalysisResult | TicketResult | DocumentationResult | SourceSummaryResult | JiraIssueResult | ConfluencePageResult;
+  result: ArtifactResult;
   intermediate_analysis?: AnalysisResult | null;
   context_used?: ContextUsed | null;
 };
+
+// ── Topics ────────────────────────────────────────────────────────────────────
 
 export type TopicSummary = {
   topic_id: string;
@@ -150,6 +182,8 @@ export type TopicDetailResponse = {
   root_run?: TopicRunView | null;
   latest_run?: TopicRunView | null;
 };
+
+// ── Read responses ────────────────────────────────────────────────────────────
 
 export type SourceSummaryResponse = {
   run_id: string;

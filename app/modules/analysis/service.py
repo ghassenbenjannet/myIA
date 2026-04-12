@@ -1,6 +1,29 @@
+import json
+import logging
+import re
+
 from app.schemas.analysis import AnalysisResult
+from app.schemas.confluence_result import ConfluencePageResult
 from app.schemas.jira_result import JiraIssueResult
 from app.schemas.source_summary import SourceSummaryResult
+from app.services.llm.provider import LLMProvider
+from app.services.prompt_manager import prompt_manager
+
+logger = logging.getLogger(__name__)
+
+_ANALYSIS_SYSTEM = (
+    "Tu es un assistant Product Owner expert. "
+    "Tu analyses des demandes métier et produis des analyses PO structurées en JSON. "
+    "Réponds UNIQUEMENT avec un objet JSON valide, sans texte supplémentaire, sans bloc de code markdown."
+)
+
+
+def _strip_code_block(text: str) -> str:
+    """Remove markdown code fences that some models add despite instructions."""
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
 
 class AnalysisService:
@@ -66,7 +89,13 @@ class AnalysisService:
         user_input: str,
         context_hint: str | None,
         classification: dict,
+        llm_provider: LLMProvider | None = None,
     ) -> AnalysisResult:
+        if llm_provider is not None:
+            try:
+                return self._run_with_llm(user_input, context_hint, classification, llm_provider)
+            except Exception as exc:
+                logger.warning("LLM analysis failed, falling back to deterministic: %s", exc)
         lowered = self._normalize(user_input)
 
         current_behavior = self._extract_current_behavior(user_input, lowered)
@@ -119,6 +148,33 @@ class AnalysisService:
             recommended_output=recommended_output,
         )
 
+    def _run_with_llm(
+        self,
+        user_input: str,
+        context_hint: str | None,
+        classification: dict,
+        llm_provider: LLMProvider,
+    ) -> AnalysisResult:
+        prompt = prompt_manager.render(
+            "analysis",
+            {
+                "user_input": user_input,
+                "context_hint": context_hint,
+                "request_type": classification["request_type"],
+            },
+        )
+        raw = llm_provider.generate(prompt, system=_ANALYSIS_SYSTEM, workflow="analysis")
+        data = json.loads(_strip_code_block(raw))
+        # Fields with defaults or set externally are not expected from LLM JSON
+        data.pop("result_type", None)
+        data.setdefault("detected_type", classification["request_type"])
+        data.setdefault("context_hint", context_hint)
+        # Ensure list fields are always lists
+        for field in ("business_impacts", "technical_impacts", "dependencies", "ambiguities", "risks", "open_questions"):
+            if not isinstance(data.get(field), list):
+                data[field] = []
+        return AnalysisResult(**data)
+
     def from_source_summary(self, source_summary: SourceSummaryResult) -> AnalysisResult:
         source_text = self._build_source_text(source_summary)
         lowered = self._normalize(source_text)
@@ -151,6 +207,43 @@ class AnalysisService:
             risks=risks,
             open_questions=open_questions,
             recommended_next_step=source_summary.next_step_hint,
+            recommended_output="analysis",
+        )
+
+    def from_confluence_page(self, page: ConfluencePageResult) -> AnalysisResult:
+        page_text = self._build_confluence_text(page)
+        lowered = self._normalize(page_text)
+        business_impacts = self._extract_impacts(lowered, self.BUSINESS_KEYWORDS)
+        technical_impacts = self._extract_impacts(lowered, self.TECHNICAL_KEYWORDS)
+        dependencies = self._extract_dependencies(lowered)
+        open_questions = list(page.open_points)
+        if not open_questions:
+            open_questions.append("Quels points de la page Confluence doivent encore etre confirmes avec le metier ?")
+
+        ambiguities = ["Le comportement attendu n'est pas explicite dans la page Confluence."]
+        if not page.content_preview:
+            ambiguities.append("Le contenu de la page Confluence est partiellement disponible.")
+
+        risks = ["Risque de mauvaise interpretation si la page Confluence ne couvre pas tout le perimetre."]
+        if technical_impacts:
+            risks.append("Risque de regression technique si les dependances identifiees ne sont pas verifiees.")
+        if business_impacts:
+            risks.append("Risque d'impact metier si la page Confluence est incomplete ou datee.")
+
+        return AnalysisResult(
+            reformulation=f"La page Confluence '{page.title}' porte sur un sujet a analyser avant transformation en livrable.",
+            request_summary=page.summary,
+            context_hint=f"Page Confluence lue: {page.page_id}",
+            detected_type="analysis",
+            current_behavior=self._extract_confluence_current_behavior(page),
+            expected_behavior=None,
+            business_impacts=business_impacts,
+            technical_impacts=technical_impacts,
+            dependencies=dependencies,
+            ambiguities=ambiguities,
+            risks=risks,
+            open_questions=open_questions,
+            recommended_next_step="Clarifier le besoin attendu puis transformer cette analyse en ticket ou documentation selon le besoin.",
             recommended_output="analysis",
         )
 
@@ -190,6 +283,22 @@ class AnalysisService:
             recommended_next_step="Clarifier le besoin attendu puis transformer cette analyse en ticket ou documentation selon le besoin.",
             recommended_output="analysis",
         )
+
+    def _build_confluence_text(self, page: ConfluencePageResult) -> str:
+        return " ".join(
+            [
+                page.title,
+                page.summary,
+                page.content_preview or "",
+                *page.key_points,
+                *page.open_points,
+            ]
+        ).strip()
+
+    def _extract_confluence_current_behavior(self, page: ConfluencePageResult) -> str | None:
+        if page.key_points:
+            return f"Point cle issu de Confluence: {page.key_points[0]}"
+        return None
 
     def _normalize(self, value: str) -> str:
         replacements = {
